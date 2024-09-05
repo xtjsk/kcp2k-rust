@@ -1,0 +1,13 @@
+[package]
+name = "kcp2k_rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kcp = "0.5.3"
+tokio = { version = "1.37", features = ["full"] }
+bytes = "1.7.1"
+serde = { version = "1.0.204", features = ["derive"] }
+rand = "0.9.0-alpha.2"
+log = "0.4.22"
+socket2 = "0.5.7"

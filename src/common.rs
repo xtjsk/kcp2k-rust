@@ -1,9 +1,10 @@
+use crate::kcp2k::Kcp2KMode;
 use rand::TryRngCore;
 use socket2::{SockAddr, Socket};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Error;
 use std::sync::Arc;
-use crate::kcp2k::Kcp2KMode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // sock_addr hash
 pub fn connection_hash(sock_addr: &SockAddr) -> u64 {
@@ -37,4 +38,20 @@ pub fn configure_socket_buffers(socket: &Socket, recv_buffer_size: usize, send_b
              initial_receive, socket.recv_buffer_size()?, socket.recv_buffer_size()? / initial_receive,
              initial_send, socket.send_buffer_size()?, socket.send_buffer_size()? / initial_send);
     Ok(())
+}
+
+// 获取当前时间戳（秒）
+#[allow(dead_code)]
+pub fn get_current_timestamp_secs() -> u64 {
+    let start = SystemTime::now();
+    let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    since_the_epoch.as_secs()
+}
+
+// 获取当前时间戳（毫秒）
+#[allow(dead_code)]
+pub fn get_current_timestamp_millis() -> u128 {
+    let start = SystemTime::now();
+    let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    since_the_epoch.as_millis()
 }

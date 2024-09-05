@@ -1,4 +1,6 @@
+use crate::common::get_current_timestamp_millis;
 use crate::error_code::ErrorCode;
+use crate::kcp2k::Kcp2KMode;
 use crate::kcp2k_callback::{Callback, CallbackType};
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
@@ -9,9 +11,7 @@ use crate::kcp2k_state::Kcp2KState;
 use bytes::BufMut;
 use socket2::{SockAddr, Socket};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use crate::kcp2k::Kcp2KMode;
 
 // KcpServerConnection
 pub struct Kcp2KServerConnection {
@@ -142,7 +142,7 @@ impl Kcp2KServerConnection {
         // 消息
         let message = &segment[5..];
 
-        self.kcp_peer.last_recv_time = Instant::now();
+        self.kcp_peer.last_recv_time = get_current_timestamp_millis();
 
         // 根据通道类型处理消息
         match Kcp2KChannel::from(channel) {
@@ -295,26 +295,26 @@ impl Kcp2KServerConnection {
     }
     pub fn tick_incoming(&mut self) {
         // 更新时间
-        self.kcp_peer.time = Instant::now();
+        self.kcp_peer.current_time = get_current_timestamp_millis();
         // 根据状态处理不同的逻辑
         match self.kcp_peer.state {
-            Kcp2KState::Connected => self.tick_incoming_connected(self.kcp_peer.time),
-            Kcp2KState::Authenticated => self.tick_incoming_authenticated(self.kcp_peer.time),
+            Kcp2KState::Connected => self.tick_incoming_connected(),
+            Kcp2KState::Authenticated => self.tick_incoming_authenticated(),
             Kcp2KState::Disconnected => {}
         }
     }
     pub fn tick_outgoing(&mut self) {
         match self.kcp_peer.state {
             Kcp2KState::Connected | Kcp2KState::Authenticated => {
-                let _ = self.kcp_peer.kcp.update(self.kcp_peer.time.elapsed().as_millis() as u32);
+                let _ = self.kcp_peer.kcp.update((self.kcp_peer.current_time / 1000) as u32);
             }
             Kcp2KState::Disconnected => {}
         }
     }
     // 处理连接
-    fn tick_incoming_connected(&mut self, time: Instant) {
-        self.handle_ping(time);
-        self.handle_timeout(time);
+    fn tick_incoming_connected(&mut self) {
+        self.handle_ping();
+        self.handle_timeout();
         self.handle_dead_link();
 
         while let Some((header, _)) = self.receive_next_reliable() {
@@ -331,9 +331,9 @@ impl Kcp2KServerConnection {
         }
     }
     // 处理认证
-    fn tick_incoming_authenticated(&mut self, time: Instant) {
-        self.handle_ping(time);
-        self.handle_timeout(time);
+    fn tick_incoming_authenticated(&mut self) {
+        self.handle_ping();
+        self.handle_timeout();
         self.handle_dead_link();
 
         while let Some((header, data)) = self.receive_next_reliable() {
@@ -361,7 +361,7 @@ impl Kcp2KServerConnection {
     }
     // 发送 ping
     fn send_ping(&mut self) -> Result<(), ErrorCode> {
-        self.kcp_peer.last_send_ping_time = Instant::now();
+        self.kcp_peer.last_send_ping_time = get_current_timestamp_millis();
         if self.is_reliable_ping {
             self.send_reliable(Kcp2KHeaderReliable::Ping, Default::default())
         } else {
@@ -398,14 +398,14 @@ impl Kcp2KServerConnection {
         }
     }
     // 处理 ping
-    fn handle_ping(&mut self, time: Instant) {
-        if time > self.kcp_peer.last_send_ping_time + Duration::from_millis(PING_INTERVAL) {
+    fn handle_ping(&mut self) {
+        if self.kcp_peer.current_time > self.kcp_peer.last_send_ping_time + PING_INTERVAL {
             let _ = self.send_ping();
         }
     }
     // 处理超时
-    fn handle_timeout(&mut self, time: Instant) {
-        if time > self.kcp_peer.last_recv_time + self.kcp_peer.timeout_duration {
+    fn handle_timeout(&mut self) {
+        if self.kcp_peer.current_time > self.kcp_peer.last_recv_time + self.kcp_peer.timeout_duration {
             let _ = self.on_error(ErrorCode::Timeout, "to disconnected.".to_string());
             let _ = self.on_disconnected();
         }

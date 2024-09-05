@@ -1,7 +1,7 @@
 // 引入 Rust 标准库中的序列化相关的 trait
 use serde::{Deserialize, Serialize};
 
-pub const PING_INTERVAL: u64 = 1000;
+pub const PING_INTERVAL: u128 = 1000;
 pub const CHANNEL_HEADER_SIZE: usize = 1;
 pub const COOKIE_HEADER_SIZE: usize = 4;
 pub const METADATA_SIZE_RELIABLE: usize = CHANNEL_HEADER_SIZE + COOKIE_HEADER_SIZE;
@@ -29,7 +29,7 @@ pub struct Kcp2KConfig {
     pub send_window_size: u16,
     pub receive_window_size: u16,
     // 超时设置，单位为毫秒
-    pub timeout: u64,
+    pub timeout: u128,
     // 最大重传次数，直到连接被认为是断开的
     pub max_retransmits: u32,
     pub is_reliable_ping: bool,

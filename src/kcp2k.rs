@@ -5,16 +5,16 @@ use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_server_connection::Kcp2KServerConnection;
-use log::{error};
+use log::error;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::cmp::PartialEq;
-use std::collections::{HashMap};
-use std::io::{Error};
+use std::collections::HashMap;
+use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time;
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 
 
 #[derive(Debug, PartialEq)]

@@ -1,8 +1,8 @@
-use kcp2k_rust::kcp2k::{Kcp2K, Kcp2KMode};
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
+use kcp2k_rust::kcp2k_server::Server;
 
-async fn update_several_times(amount: usize, server: &mut Kcp2K, interval: u64) {
+async fn update_several_times(amount: usize, server: &mut Server, interval: u64) {
     let interval = std::time::Duration::from_millis(interval);
     for _ in 0..amount {
         server.tick();
@@ -16,7 +16,7 @@ async fn main() {
     let config = Kcp2KConfig::default();
 
     // 创建 KCP 服务器
-    let (mut server, mut callback_rx) = Kcp2K::new(config, "0.0.0.0:3100".to_string(), Kcp2KMode::Server).unwrap();
+    let (mut server, mut callback_rx) = Server::new(config, "0.0.0.0:3100".to_string()).unwrap();
 
 
     // 服务器回调处理

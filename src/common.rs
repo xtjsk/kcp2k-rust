@@ -1,10 +1,15 @@
-use crate::kcp2k::Kcp2KMode;
 use rand::TryRngCore;
 use socket2::{SockAddr, Socket};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Error;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Debug, PartialEq)]
+pub enum Kcp2KMode {
+    Client,
+    Server,
+}
 
 // sock_addr hash
 pub fn connection_hash(sock_addr: &SockAddr) -> u64 {

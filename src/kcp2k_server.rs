@@ -3,27 +3,18 @@ use crate::error_code::ErrorCode;
 use crate::kcp2k_callback::Callback;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
-use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_server_connection::Kcp2KServerConnection;
 use log::error;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time;
 use tokio::sync::mpsc;
+use common::Kcp2KMode;
 
-
-#[derive(Debug, PartialEq)]
-pub enum Kcp2KMode {
-    Client,
-    Server,
-}
-
-pub struct Kcp2K {
+pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
     socket_addr: SockAddr, // socket_addr
@@ -31,13 +22,11 @@ pub struct Kcp2K {
     connections: HashMap<u64, Kcp2KServerConnection>,
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
     callback_tx: mpsc::UnboundedSender<Callback>,
-    kcp2k_mode: Arc<Kcp2KMode>,
-    client_model_default_connection_id: u64,
 }
 
 
-impl Kcp2K {
-    pub fn new(config: Kcp2KConfig, addr: String, kcp2k_mode: Kcp2KMode) -> Result<(Self, mpsc::UnboundedReceiver<Callback>), Error> {
+impl Server {
+    pub fn new(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::UnboundedReceiver<Callback>), Error> {
         let (callback_tx, callback_rx) = mpsc::unbounded_channel::<Callback>();
 
         let address: SocketAddr = addr.parse().unwrap();
@@ -46,7 +35,7 @@ impl Kcp2K {
         let socket = Socket::new(domain, Type::DGRAM, Option::from(Protocol::UDP))?;
         socket.set_nonblocking(true)?;
 
-        let instance = Kcp2K {
+        let instance = Server {
             config: Arc::new(config),
             socket: Arc::new(socket),
             socket_addr: address.into(),
@@ -54,61 +43,28 @@ impl Kcp2K {
             connections: HashMap::new(),
             removed_connections: Arc::new(Mutex::new(Vec::new())),
             callback_tx,
-            kcp2k_mode: Arc::new(kcp2k_mode),
-            client_model_default_connection_id: rand::random(),
         };
 
         Ok((instance, callback_rx))
     }
-
     pub fn start(&mut self) -> Result<(), Error> {
-        common::configure_socket_buffers(&self.socket, self.config.recv_buffer_size, self.config.send_buffer_size, Arc::clone(&self.kcp2k_mode))?;
-        match self.kcp2k_mode.as_ref() {
-            Kcp2KMode::Client => {
-                println!("[KCP2K] {:?} connecting to: {:?}", self.kcp2k_mode, self.socket_addr.as_socket());
-                self.socket.connect(&self.socket_addr)?;
-                self.create_connection(self.client_model_default_connection_id);
-            }
-            Kcp2KMode::Server => {
-                println!("[KCP2K] {:?} listening on: {:?}", self.kcp2k_mode, self.socket_addr.as_socket());
-                self.socket.bind(&self.socket_addr)?;
-            }
-        }
+        common::configure_socket_buffers(&self.socket, self.config.recv_buffer_size, self.config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
+
+        println!("[KCP2K] Server listening on: {:?}", self.socket_addr.as_socket());
+        self.socket.bind(&self.socket_addr)?;
+
         Ok(())
     }
-
-    pub fn new_with_arc(config: Kcp2KConfig, addr: String, mode: Kcp2KMode) -> Result<(Arc<Mutex<Self>>, mpsc::UnboundedReceiver<Callback>), Error> {
-        let (instance, callback_rx) = Self::new(config, addr, mode)?;
-        Ok((Arc::new(Mutex::new(instance)), callback_rx))
+    pub fn stop(&mut self) {
+        self.socket.shutdown(std::net::Shutdown::Both).unwrap();
     }
-
-    pub fn loop_start(instance: &Arc<Mutex<Self>>) -> Result<(), Error> {
-        instance.lock().unwrap().start()?;
-        let interval = time::Duration::from_millis(instance.lock().unwrap().config.interval);
-        loop {
-            instance.lock().unwrap().tick();
-            std::thread::sleep(interval);
-        }
-    }
-
-
-    pub fn s_send(&mut self, connection_id: u64, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
+    pub fn send(&mut self, connection_id: u64, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         if let Some(connection) = self.connections.get_mut(&connection_id) {
             connection.send_data(data, channel)
         } else {
             Err(ErrorCode::ConnectionNotFound)
         }
     }
-
-    pub fn c_send(&mut self, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
-        if let Some(connection) = self.connections.get_mut(&self.client_model_default_connection_id) {
-            connection.send_data(data, channel)
-        } else {
-            Err(ErrorCode::ConnectionNotFound)
-        }
-    }
-
-
     pub fn tick(&mut self) {
         self.tick_incoming();
         self.tick_outgoing();
@@ -139,7 +95,7 @@ impl Kcp2K {
             Arc::clone(&self.new_client_sock_addr),
             self.callback_tx.clone(),
             Arc::clone(&self.removed_connections),
-            Arc::clone(&self.kcp2k_mode),
+            Arc::new(Kcp2KMode::Server),
         );
         self.connections.insert(connection_id, kcp_server_connection);
     }
@@ -147,23 +103,7 @@ impl Kcp2K {
         // 如果连接存在，则处理数据
         if let Some(connection) = self.connections.get_mut(&connection_id) {
             let _ = connection.on_raw_input(data);
-        } else if self.kcp2k_mode == Arc::from(Kcp2KMode::Client) { // 如果是客户端模式
-            let mut cookie = common::generate_cookie();
-            if data.len() > 4 {
-                cookie = data[1..5].to_vec();
-                println!("[KCP2K] {:?} received handshake with cookie={:?}", self.kcp2k_mode, cookie);
-            }
-            match self.connections.remove(&self.client_model_default_connection_id) {
-                Some(mut conn) => {
-                    self.client_model_default_connection_id = connection_id;
-                    conn.set_connection_id(connection_id);
-                    conn.set_kcp_peer(Kcp2KPeer::new(Arc::clone(&self.config), Arc::new(cookie), Arc::clone(&self.socket), Arc::clone(&self.new_client_sock_addr)));
-                    self.connections.insert(connection_id, conn);
-                    self.handle_data(data, connection_id);
-                }
-                None => {}
-            }
-        } else if self.kcp2k_mode == Arc::from(Kcp2KMode::Server) { // 如果是服务器模式
+        } else { // 如果连接不存在，则创建连接
             self.create_connection(connection_id);
             self.handle_data(data, connection_id);
         }

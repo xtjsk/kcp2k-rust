@@ -1,6 +1,5 @@
-use crate::common::get_current_timestamp_millis;
+use crate::common::{get_current_timestamp_millis, Kcp2KMode};
 use crate::error_code::ErrorCode;
-use crate::kcp2k::Kcp2KMode;
 use crate::kcp2k_callback::{Callback, CallbackType};
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;

@@ -1,10 +1,9 @@
-use kcp2k_rust::error_code::ErrorCode;
-use kcp2k_rust::kcp2k::{Kcp2K, Kcp2KMode};
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
+use kcp2k_rust::kcp2k_client::Client;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
 
-async fn update_several_times(amount: usize, client: &mut Kcp2K, interval: u64) {
+async fn update_several_times(amount: usize, client: &mut Client, interval: u64) {
     let interval = std::time::Duration::from_millis(interval);
     for _ in 0..amount {
         client.tick();
@@ -18,7 +17,7 @@ async fn main() {
     let config = Kcp2KConfig::default();
 
     // 创建 KCP 客户端
-    let (mut client, mut callback_rx) = Kcp2K::new(config, "127.0.0.1:3100".to_string(), Kcp2KMode::Client).unwrap();
+    let (mut client, mut callback_rx) = Client::new(config, "127.0.0.1:3100".to_string()).unwrap();
 
 
     // 客户端回调处理
@@ -42,12 +41,12 @@ async fn main() {
     });
 
     // 启动客户端
-    client.start().unwrap();
+    client.connect().unwrap();
     // 客户端更新
     update_several_times(5, &mut client, config.interval).await;
 
     loop {
-        if let Err(e) = client.c_send(vec![1, 2], Kcp2KChannel::Reliable) {
+        if let Err(e) = client.send(vec![1, 2], Kcp2KChannel::Reliable) {
             println!("client send failed: {:?}", e);
         }
         update_several_times(10, &mut client, config.interval).await;

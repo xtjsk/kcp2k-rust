@@ -26,7 +26,6 @@ pub struct Client {
     client_model_default_connection_id: u64,
 }
 
-
 impl Client {
     pub fn new(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::UnboundedReceiver<Callback>), Error> {
         let (callback_tx, callback_rx) = mpsc::unbounded_channel::<Callback>();
@@ -74,8 +73,8 @@ impl Client {
     pub fn tick(&mut self) {
         self.tick_incoming();
         self.tick_outgoing();
-        self.tick_connections();
     }
+
     fn raw_receive_from(&mut self) -> Option<(u64, Vec<u8>)> {
         let mut buf: [MaybeUninit<u8>; 1024] = unsafe { MaybeUninit::uninit().assume_init() };
 
@@ -135,15 +134,14 @@ impl Client {
         for connection in self.connections.values_mut() {
             connection.tick_incoming();
         }
+
+        while let Some(connection_id) = self.removed_connections.lock().unwrap().pop() {
+            drop(self.connections.remove(&connection_id));
+        }
     }
     fn tick_outgoing(&mut self) {
         for connection in self.connections.values_mut() {
             connection.tick_outgoing();
-        }
-    }
-    fn tick_connections(&mut self) {
-        while let Some(connection_id) = self.removed_connections.lock().unwrap().pop() {
-            drop(self.connections.remove(&connection_id));
         }
     }
     pub fn get_connections(&self) -> &HashMap<u64, Kcp2KServerConnection> {

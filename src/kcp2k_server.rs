@@ -68,7 +68,6 @@ impl Server {
     pub fn tick(&mut self) {
         self.tick_incoming();
         self.tick_outgoing();
-        self.tick_connections();
     }
     fn raw_receive_from(&mut self) -> Option<(u64, Vec<u8>)> {
         let mut buf: [MaybeUninit<u8>; 1024] = unsafe { MaybeUninit::uninit().assume_init() };
@@ -116,15 +115,14 @@ impl Server {
         for connection in self.connections.values_mut() {
             connection.tick_incoming();
         }
+
+        while let Some(connection_id) = self.removed_connections.lock().unwrap().pop() {
+            drop(self.connections.remove(&connection_id));
+        }
     }
     fn tick_outgoing(&mut self) {
         for connection in self.connections.values_mut() {
             connection.tick_outgoing();
-        }
-    }
-    fn tick_connections(&mut self) {
-        while let Some(connection_id) = self.removed_connections.lock().unwrap().pop() {
-            drop(self.connections.remove(&connection_id));
         }
     }
     pub fn get_connections(&self) -> &HashMap<u64, Kcp2KServerConnection> {

@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
@@ -16,29 +17,26 @@ async fn main() {
     // 创建 KCP 客户端配置
     let config = Kcp2KConfig::default();
 
-    // 创建 KCP 客户端
-    let (mut client, mut callback_rx) = Client::new(config, "127.0.0.1:3100".to_string()).unwrap();
-
-
-    // 客户端回调处理
-    tokio::spawn(async move {
-        while let Some(callback) = callback_rx.recv().await {
-            match callback.callback_type {
-                CallbackType::OnConnected => {
-                    println!("client OnConnected: {:?}", callback);
-                }
-                CallbackType::OnData => {
-                    println!("client OnData: {:?}", callback);
-                }
-                CallbackType::OnError => {
-                    println!("client OnError: {:?}", callback);
-                }
-                CallbackType::OnDisconnected => {
-                    println!("client on_disconnected: {:?}", callback);
-                }
+    // 回调
+    fn c_callback_fn(callback: &kcp2k_rust::kcp2k_callback::Callback) {
+        match callback.callback_type {
+            CallbackType::OnConnected => {
+                println!("client OnConnected: {:?}", callback)
+            }
+            CallbackType::OnData => {
+                println!("client OnData: {:?}", callback);
+            }
+            CallbackType::OnError => {
+                println!("client OnError: {:?}", callback);
+            }
+            CallbackType::OnDisconnected => {
+                println!("client on_disconnected: {:?}", callback);
             }
         }
-    });
+    }
+
+    // 创建 KCP 客户端
+    let mut client = Client::new(config, "127.0.0.1:3100".to_string(), Arc::new(c_callback_fn)).unwrap();
 
     // 启动客户端
     client.connect().unwrap();

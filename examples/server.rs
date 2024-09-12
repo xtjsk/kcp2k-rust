@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
 use kcp2k_rust::kcp2k_server::Server;
@@ -15,29 +16,27 @@ async fn main() {
     // 创建 KCP 服务器配置
     let config = Kcp2KConfig::default();
 
-    // 创建 KCP 服务器
-    let (mut server, mut callback_rx) = Server::new(config, "0.0.0.0:3100".to_string()).unwrap();
-
-
-    // 服务器回调处理
-    tokio::spawn(async move {
-        while let Some(callback) = callback_rx.recv().await {
-            match callback.callback_type {
-                CallbackType::OnConnected => {
-                    println!("server OnConnected: {:?}", callback)
-                }
-                CallbackType::OnData => {
-                    println!("server OnData: {:?}", callback);
-                }
-                CallbackType::OnError => {
-                    println!("server OnError: {:?}", callback);
-                }
-                CallbackType::OnDisconnected => {
-                    println!("server on_disconnected: {:?}", callback);
-                }
+    // 回调
+    fn s_callback_fn(callback: &kcp2k_rust::kcp2k_callback::Callback) {
+        match callback.callback_type {
+            CallbackType::OnConnected => {
+                println!("server OnConnected: {:?}", callback)
+            }
+            CallbackType::OnData => {
+                // println!("server OnData: {:?}", callback);
+            }
+            CallbackType::OnError => {
+                // println!("server OnError: {:?}", callback);
+            }
+            CallbackType::OnDisconnected => {
+                // println!("server on_disconnected: {:?}", callback);
             }
         }
-    });
+    }
+
+    // 创建 KCP 服务器
+    let mut server = Server::new(config, "0.0.0.0:3100".to_string(), Arc::new(s_callback_fn)).unwrap();
+
 
     // 启动服务器
     server.start().unwrap();

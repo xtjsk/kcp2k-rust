@@ -4,6 +4,7 @@ use crate::kcp2k_callback::Callback;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_server_connection::Kcp2KServerConnection;
+use common::Kcp2KMode;
 use log::error;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::collections::HashMap;
@@ -11,8 +12,6 @@ use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
-use common::Kcp2KMode;
 
 pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
@@ -21,14 +20,12 @@ pub struct Server {
     new_client_sock_addr: Arc<SockAddr>, // new_client_sock_addr
     connections: HashMap<u64, Kcp2KServerConnection>,
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
-    callback_tx: mpsc::UnboundedSender<Callback>,
+    callback_fn: Arc<dyn Fn(&Callback)>,
 }
 
 
 impl Server {
-    pub fn new(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::UnboundedReceiver<Callback>), Error> {
-        let (callback_tx, callback_rx) = mpsc::unbounded_channel::<Callback>();
-
+    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: Arc<dyn Fn(&Callback)>) -> Result<Self, Error> {
         let address: SocketAddr = addr.parse().unwrap();
 
         let domain = if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 };
@@ -42,10 +39,10 @@ impl Server {
             new_client_sock_addr: Arc::new(addr.parse::<SocketAddr>().map(SockAddr::from).unwrap()),
             connections: HashMap::new(),
             removed_connections: Arc::new(Mutex::new(Vec::new())),
-            callback_tx,
+            callback_fn,
         };
 
-        Ok((instance, callback_rx))
+        Ok(instance)
     }
     pub fn start(&mut self) -> Result<(), Error> {
         common::configure_socket_buffers(&self.socket, self.config.recv_buffer_size, self.config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
@@ -92,24 +89,24 @@ impl Server {
             Arc::clone(&self.socket),
             connection_id,
             Arc::clone(&self.new_client_sock_addr),
-            self.callback_tx.clone(),
             Arc::clone(&self.removed_connections),
             Arc::new(Kcp2KMode::Server),
+            Arc::clone(&self.callback_fn),
         );
         self.connections.insert(connection_id, kcp_server_connection);
     }
-    fn handle_data(&mut self, data: Vec<u8>, connection_id: u64) {
+    fn handle_data(&mut self, connection_id: u64, data: Vec<u8>) {
         // 如果连接存在，则处理数据
         if let Some(connection) = self.connections.get_mut(&connection_id) {
             let _ = connection.on_raw_input(data);
         } else { // 如果连接不存在，则创建连接
             self.create_connection(connection_id);
-            self.handle_data(data, connection_id);
+            self.handle_data(connection_id,data);
         }
     }
     fn tick_incoming(&mut self) {
         while let Some((connection_id, data)) = self.raw_receive_from() {
-            self.handle_data(data, connection_id);
+            self.handle_data(connection_id,data);
         }
 
         for connection in self.connections.values_mut() {

@@ -13,6 +13,7 @@ pub enum Kcp2KMode {
 
 // sock_addr hash
 pub fn connection_hash(sock_addr: &SockAddr) -> u64 {
+    // cookie 与 sock_addr 一起生成一个唯一的连接 ID
     let mut hasher = DefaultHasher::new();
     sock_addr.hash(&mut hasher);
     hasher.finish()

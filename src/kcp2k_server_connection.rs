@@ -11,7 +11,6 @@ use bytes::BufMut;
 use socket2::{SockAddr, Socket};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::mpsc;
 
 // KcpServerConnection
 pub struct Kcp2KServerConnection {
@@ -20,20 +19,20 @@ pub struct Kcp2KServerConnection {
     kcp2k_mode: Arc<Kcp2KMode>,
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
-    callback_tx: mpsc::UnboundedSender<Callback>,
+    callback_fn: Arc<dyn Fn(&Callback)>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
 
 impl Kcp2KServerConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, callback_tx: mpsc::UnboundedSender<Callback>, removed_connections: Arc<Mutex<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<Mutex<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_fn: Arc<dyn Fn(&Callback)>) -> Self {
         let mut kcp_server_connection = Kcp2KServerConnection {
             socket: Arc::clone(&socket),
             removed_connections,
             kcp2k_mode,
             connection_id,
             client_sock_addr: Arc::clone(&client_sock_addr),
-            callback_tx: callback_tx.clone(),
+            callback_fn,
             kcp_peer: Kcp2KPeer::new(Arc::clone(&config), Arc::clone(&cookie), Arc::clone(&socket), Arc::clone(&client_sock_addr)),
             is_reliable_ping: config.is_reliable_ping,
         };
@@ -53,37 +52,31 @@ impl Kcp2KServerConnection {
     pub fn set_connection_id(&mut self, connection_id: u64) {
         self.connection_id = connection_id;
     }
-    fn on_connected(&mut self) -> Result<(), ErrorCode> {
-        match self.callback_tx.send(Callback {
+    fn on_connected(&mut self) {
+        (self.callback_fn)(&Callback {
             callback_type: CallbackType::OnConnected,
             connection_id: self.connection_id,
             ..Default::default()
-        }) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ErrorCode::SendError)
-        }
+        });
     }
-    fn on_authenticated(&mut self) -> Result<(), ErrorCode> {
+    fn on_authenticated(&mut self) {
         self.kcp_peer.state = Kcp2KState::Authenticated;
         let _ = self.send_hello();
         self.on_connected()
     }
-    fn on_data(&mut self, data: &[u8], kcp2k_channel: Kcp2KChannel) -> Result<(), ErrorCode> {
-        match self.callback_tx.send(Callback {
+    fn on_data(&mut self, data: &[u8], kcp2k_channel: Kcp2KChannel) {
+        (self.callback_fn)(&Callback {
             callback_type: CallbackType::OnData,
             data: data.to_vec(),
             channel: kcp2k_channel,
             connection_id: self.connection_id,
             ..Default::default()
-        }) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ErrorCode::SendError)
-        }
+        });
     }
-    fn on_disconnected(&mut self) -> Result<(), ErrorCode> {
+    fn on_disconnected(&mut self) {
         // 如果连接已经断开，则不执行任何操作
         if self.kcp_peer.state == Kcp2KState::Disconnected {
-            return Ok(());
+            return;
         }
         // 发送断开消息
         self.send_disconnect();
@@ -91,28 +84,21 @@ impl Kcp2KServerConnection {
         self.kcp_peer.state = Kcp2KState::Disconnected;
         // 添加到移除列表
         self.removed_connections.lock().unwrap().push(self.connection_id);
-        // 发送回调
-        if let Ok(_) = self.callback_tx.send(Callback {
+        // 回调
+        (self.callback_fn)(&Callback {
             callback_type: CallbackType::OnDisconnected,
             connection_id: self.connection_id,
             ..Default::default()
-        }) {
-            Ok(())
-        } else {
-            Err(ErrorCode::SendError)
-        }
+        });
     }
-    fn on_error(&mut self, error_code: ErrorCode, error_message: String) -> Result<(), ErrorCode> {
-        match self.callback_tx.send(Callback {
+    fn on_error(&mut self, error_code: ErrorCode, error_message: String) {
+        (self.callback_fn)(&Callback {
             callback_type: CallbackType::OnError,
             connection_id: self.connection_id,
             error_code,
             error_message,
             ..Default::default()
-        }) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ErrorCode::SendError)
-        }
+        });
     }
     fn on_raw_send(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
         match self.socket.send_to(&data, &self.client_sock_addr) {
@@ -134,7 +120,7 @@ impl Kcp2KServerConnection {
         // 如果连接已经通过验证，但是收到了带有不同 cookie 的消息，那么这可能是由于客户端的 Hello 消息被多次传输，或者攻击者尝试进行 UDP 欺骗。
         if self.kcp_peer.state == Kcp2KState::Authenticated {
             if cookie != self.kcp_peer.cookie.to_vec() {
-                self.on_error(ErrorCode::InvalidReceive, format!("{}: Dropped message with invalid cookie: {:?} from {:?} expected: {:?} state: {:?}. This can happen if the client's Hello message was transmitted multiple times, or if an attacker attempted UDP spoofing.", std::any::type_name::<Self>(), cookie, self.client_sock_addr.clone(), self.kcp_peer.cookie.to_vec(), self.kcp_peer.state))?;
+                self.on_error(ErrorCode::InvalidReceive, format!("{}: Dropped message with invalid cookie: {:?} from {:?} expected: {:?} state: {:?}. This can happen if the client's Hello message was transmitted multiple times, or if an attacker attempted UDP spoofing.", std::any::type_name::<Self>(), cookie, self.client_sock_addr.clone(), self.kcp_peer.cookie.to_vec(), self.kcp_peer.state));
                 return Err(ErrorCode::InvalidReceive);
             }
         }
@@ -198,7 +184,8 @@ impl Kcp2KServerConnection {
                           format!("[KCP2K] {}: Input failed with error={:?} for buffer with length={}",
                                   std::any::type_name::<Self>(),
                                   e,
-                                  data.len() - 1))
+                                  data.len() - 1));
+            Err(ErrorCode::InvalidReceive)
         } else {
             Ok(())
         }
@@ -223,7 +210,7 @@ impl Kcp2KServerConnection {
                             header,
                             std::any::type_name::<Kcp2KHeaderUnreliable>()
                     ),
-                )?;
+                );
                 return Err(ErrorCode::InvalidReceive);
             }
         };
@@ -236,15 +223,18 @@ impl Kcp2KServerConnection {
             Kcp2KHeaderUnreliable::Data => {
                 match self.kcp_peer.state {
                     Kcp2KState::Authenticated => {
-                        self.on_data(&data, Kcp2KChannel::Unreliable)
+                        self.on_data(&data, Kcp2KChannel::Unreliable);
+                        Ok(())
                     }
                     _ => {
-                        self.on_error(ErrorCode::InvalidReceive, format!("{}: Received Data message while not Authenticated. Disconnecting the connection.", std::any::type_name::<Self>()))
+                        self.on_error(ErrorCode::InvalidReceive, format!("{}: Received Data message while not Authenticated. Disconnecting the connection.", std::any::type_name::<Self>()));
+                        Err(ErrorCode::InvalidReceive)
                     }
                 }
             }
             Kcp2KHeaderUnreliable::Disconnect => {
-                self.on_disconnected()
+                self.on_disconnected();
+                Ok(())
             }
             Kcp2KHeaderUnreliable::Ping => Ok(())
         }
@@ -269,7 +259,8 @@ impl Kcp2KServerConnection {
                 Ok(())
             }
             Err(e) => {
-                self.on_error(ErrorCode::InvalidSend, format!("{}: 发送失败，错误码={}，内容长度={}", "send_reliable", e, data.len()))
+                self.on_error(ErrorCode::InvalidSend, format!("{}: 发送失败，错误码={}，内容长度={}", "send_reliable", e, data.len()));
+                Err(ErrorCode::SendError)
             }
         }
     }
@@ -370,7 +361,7 @@ impl Kcp2KServerConnection {
     pub fn send_data(&mut self, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         // 如果数据为空，则返回错误
         if data.is_empty() {
-            self.on_error(ErrorCode::InvalidSend, "send_data: tried sending empty message. This should never happen. Disconnecting.".to_string())?;
+            self.on_error(ErrorCode::InvalidSend, "send_data: tried sending empty message. This should never happen. Disconnecting.".to_string());
             let _ = self.on_disconnected();
             return Err(ErrorCode::SendError);
         }
@@ -383,7 +374,7 @@ impl Kcp2KServerConnection {
                 self.send_unreliable(Kcp2KHeaderUnreliable::Data, data)
             }
             _ => {
-                self.on_error(ErrorCode::InvalidSend, format!("send_data: tried sending message with invalid channel: {:?}. Disconnecting.", channel))?;
+                self.on_error(ErrorCode::InvalidSend, format!("send_data: tried sending message with invalid channel: {:?}. Disconnecting.", channel));
                 let _ = self.on_disconnected();
                 Err(ErrorCode::SendError)
             }

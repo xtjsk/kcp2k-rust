@@ -98,15 +98,15 @@ impl Server {
     fn handle_data(&mut self, connection_id: u64, data: Vec<u8>) {
         // 如果连接存在，则处理数据
         if let Some(connection) = self.connections.get_mut(&connection_id) {
-            let _ = connection.on_raw_input(data);
+            let _ = connection.raw_input(data);
         } else { // 如果连接不存在，则创建连接
             self.create_connection(connection_id);
-            self.handle_data(connection_id,data);
+            self.handle_data(connection_id, data);
         }
     }
     fn tick_incoming(&mut self) {
         while let Some((connection_id, data)) = self.raw_receive_from() {
-            self.handle_data(connection_id,data);
+            self.handle_data(connection_id, data);
         }
 
         for connection in self.connections.values_mut() {

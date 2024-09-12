@@ -7,6 +7,7 @@ pub enum Kcp2KHeaderReliable {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(u8)]
 pub enum Kcp2KHeaderUnreliable {
     Data = 4,
     Disconnect = 5,

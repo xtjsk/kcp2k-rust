@@ -1,6 +1,6 @@
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::{Kcp2KConfig, METADATA_SIZE_RELIABLE};
-use crate::kcp2k_state::Kcp2KState;
+use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::BufMut;
 use kcp::Kcp;
 use socket2::{SockAddr, Socket};
@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 pub struct Kcp2KPeer {
     pub cookie: Arc<Vec<u8>>, // cookie
-    pub state: Kcp2KState,  // 状态
+    pub state: Kcp2KPeerState,  // 状态
     pub kcp: Kcp<UdpOutput>, // kcp
     pub watch: Instant,
     pub timeout_duration: Duration, // 超时时间
@@ -42,7 +42,7 @@ impl Kcp2KPeer {
         Self {
             kcp,
             cookie,
-            state: Kcp2KState::Connected,
+            state: Kcp2KPeerState::Connected,
             timeout_duration: Duration::from_millis(config.timeout),
             watch: Instant::now(),
             last_recv_time: Duration::from_secs(0),

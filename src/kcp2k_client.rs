@@ -104,7 +104,7 @@ impl Client {
     fn handle_data(&mut self, connection_id: u64, data: Vec<u8>) {
         // 如果连接存在，则处理数据
         if let Some(connection) = self.connections.get_mut(&connection_id) {
-            let _ = connection.on_raw_input(data);
+            let _ = connection.raw_input(data);
         } else { // 如果是客户端模式
             let mut cookie = common::generate_cookie();
             if data.len() > 4 {
@@ -114,10 +114,10 @@ impl Client {
             match self.connections.remove(&self.client_model_default_connection_id) {
                 Some(mut conn) => {
                     self.client_model_default_connection_id = connection_id;
-                    conn.set_connection_id(connection_id);
+                    conn.set_connection_id(self.client_model_default_connection_id);
                     conn.set_kcp_peer(Kcp2KPeer::new(Arc::clone(&self.config), Arc::new(cookie), Arc::clone(&self.socket), Arc::clone(&self.new_client_sock_addr)));
-                    self.connections.insert(connection_id, conn);
-                    self.handle_data(connection_id, data);
+                    self.connections.insert(self.client_model_default_connection_id, conn);
+                    self.handle_data(self.client_model_default_connection_id, data);
                 }
                 None => {}
             }

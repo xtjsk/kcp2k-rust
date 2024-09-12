@@ -6,7 +6,7 @@ use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_config::PING_INTERVAL;
 use crate::kcp2k_header::{Kcp2KHeaderReliable, Kcp2KHeaderUnreliable};
 use crate::kcp2k_peer::Kcp2KPeer;
-use crate::kcp2k_state::Kcp2KState;
+use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::BufMut;
 use socket2::{SockAddr, Socket};
 use std::sync::{Arc, Mutex};
@@ -16,7 +16,6 @@ use std::time::Duration;
 pub struct Kcp2KServerConnection {
     socket: Arc<Socket>,
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
-    kcp2k_mode: Arc<Kcp2KMode>,
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
     callback_fn: Arc<dyn Fn(&Callback)>,
@@ -29,17 +28,14 @@ impl Kcp2KServerConnection {
         let mut kcp_server_connection = Kcp2KServerConnection {
             socket: Arc::clone(&socket),
             removed_connections,
-            kcp2k_mode,
             connection_id,
             client_sock_addr: Arc::clone(&client_sock_addr),
             callback_fn,
             kcp_peer: Kcp2KPeer::new(Arc::clone(&config), Arc::clone(&cookie), Arc::clone(&socket), Arc::clone(&client_sock_addr)),
             is_reliable_ping: config.is_reliable_ping,
         };
-        if kcp_server_connection.kcp2k_mode == Arc::from(Kcp2KMode::Client) {
+        if kcp2k_mode == Arc::from(Kcp2KMode::Client) {
             let _ = kcp_server_connection.send_hello();
-        } else if kcp_server_connection.kcp2k_mode == Arc::from(Kcp2KMode::Server) {
-            println!("[KCP2K] {:?} created connection with cookie={:?}", kcp_server_connection.kcp2k_mode, cookie);
         }
         kcp_server_connection
     }
@@ -60,7 +56,7 @@ impl Kcp2KServerConnection {
         });
     }
     fn on_authenticated(&mut self) {
-        self.kcp_peer.state = Kcp2KState::Authenticated;
+        self.kcp_peer.state = Kcp2KPeerState::Authenticated;
         let _ = self.send_hello();
         self.on_connected()
     }
@@ -75,13 +71,13 @@ impl Kcp2KServerConnection {
     }
     fn on_disconnected(&mut self) {
         // 如果连接已经断开，则不执行任何操作
-        if self.kcp_peer.state == Kcp2KState::Disconnected {
+        if self.kcp_peer.state == Kcp2KPeerState::Disconnected {
             return;
         }
         // 发送断开消息
         self.send_disconnect();
         // 设置状态为断开
-        self.kcp_peer.state = Kcp2KState::Disconnected;
+        self.kcp_peer.state = Kcp2KPeerState::Disconnected;
         // 添加到移除列表
         self.removed_connections.lock().unwrap().push(self.connection_id);
         // 回调
@@ -100,13 +96,13 @@ impl Kcp2KServerConnection {
             ..Default::default()
         });
     }
-    fn on_raw_send(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
+    fn raw_send(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
         match self.socket.send_to(&data, &self.client_sock_addr) {
             Ok(_) => Ok(()),
             Err(_) => Err(ErrorCode::SendError)
         }
     }
-    pub fn on_raw_input(&mut self, segment: Vec<u8>) -> Result<(), ErrorCode> {
+    pub fn raw_input(&mut self, segment: Vec<u8>) -> Result<(), ErrorCode> {
         if segment.len() <= 5 {
             return Err(ErrorCode::InvalidReceive);
         }
@@ -118,7 +114,7 @@ impl Kcp2KServerConnection {
         let cookie = &segment[1..5];
 
         // 如果连接已经通过验证，但是收到了带有不同 cookie 的消息，那么这可能是由于客户端的 Hello 消息被多次传输，或者攻击者尝试进行 UDP 欺骗。
-        if self.kcp_peer.state == Kcp2KState::Authenticated {
+        if self.kcp_peer.state == Kcp2KPeerState::Authenticated {
             if cookie != self.kcp_peer.cookie.to_vec() {
                 self.on_error(ErrorCode::InvalidReceive, format!("{}: Dropped message with invalid cookie: {:?} from {:?} expected: {:?} state: {:?}. This can happen if the client's Hello message was transmitted multiple times, or if an attacker attempted UDP spoofing.", std::any::type_name::<Self>(), cookie, self.client_sock_addr.clone(), self.kcp_peer.cookie.to_vec(), self.kcp_peer.state));
                 return Err(ErrorCode::InvalidReceive);
@@ -132,8 +128,8 @@ impl Kcp2KServerConnection {
 
         // 根据通道类型处理消息
         match Kcp2KChannel::from(channel) {
-            Kcp2KChannel::Reliable => self.on_raw_input_reliable(message),
-            Kcp2KChannel::Unreliable => self.on_raw_input_unreliable(message),
+            Kcp2KChannel::Reliable => self.raw_input_reliable(message),
+            Kcp2KChannel::Unreliable => self.raw_input_unreliable(message),
             _ => Err(ErrorCode::Unexpected)
         }
     }
@@ -178,7 +174,7 @@ impl Kcp2KServerConnection {
             }
         }
     }
-    fn on_raw_input_reliable(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
+    fn raw_input_reliable(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
         if let Err(e) = self.kcp_peer.kcp.input(&data) {
             self.on_error(ErrorCode::InvalidReceive,
                           format!("[KCP2K] {}: Input failed with error={:?} for buffer with length={}",
@@ -190,7 +186,7 @@ impl Kcp2KServerConnection {
             Ok(())
         }
     }
-    fn on_raw_input_unreliable(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
+    fn raw_input_unreliable(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
         // 至少需要一个字节用于 header
         if data.len() < 1 {
             return Err(ErrorCode::InvalidReceive);
@@ -222,7 +218,7 @@ impl Kcp2KServerConnection {
         match header {
             Kcp2KHeaderUnreliable::Data => {
                 match self.kcp_peer.state {
-                    Kcp2KState::Authenticated => {
+                    Kcp2KPeerState::Authenticated => {
                         self.on_data(&data, Kcp2KChannel::Unreliable);
                         Ok(())
                     }
@@ -282,23 +278,24 @@ impl Kcp2KServerConnection {
             buffer.put_slice(&data);
         }
         // raw send
-        self.on_raw_send(&buffer)
+        self.raw_send(&buffer)
     }
     pub fn tick_incoming(&mut self) {
+        // 获取经过的时间
         let elapsed_time = self.kcp_peer.watch.elapsed();
         // 根据状态处理不同的逻辑
         match self.kcp_peer.state {
-            Kcp2KState::Connected => self.tick_incoming_connected(elapsed_time),
-            Kcp2KState::Authenticated => self.tick_incoming_authenticated(elapsed_time),
-            Kcp2KState::Disconnected => {}
+            Kcp2KPeerState::Connected => self.tick_incoming_connected(elapsed_time),
+            Kcp2KPeerState::Authenticated => self.tick_incoming_authenticated(elapsed_time),
+            Kcp2KPeerState::Disconnected => {}
         }
     }
     pub fn tick_outgoing(&mut self) {
         match self.kcp_peer.state {
-            Kcp2KState::Connected | Kcp2KState::Authenticated => {
+            Kcp2KPeerState::Connected | Kcp2KPeerState::Authenticated => {
                 let _ = self.kcp_peer.kcp.update(self.kcp_peer.watch.elapsed().as_millis() as u32);
             }
-            Kcp2KState::Disconnected => {}
+            Kcp2KPeerState::Disconnected => {}
         }
     }
     // 处理连接
@@ -346,7 +343,6 @@ impl Kcp2KServerConnection {
     }
     // 发送 hello
     fn send_hello(&mut self) -> Result<(), ErrorCode> {
-        println!("[KCP2K] {:?} send handshake to server with cookie={:?}", self.kcp2k_mode, self.kcp_peer.cookie);
         self.send_reliable(Kcp2KHeaderReliable::Hello, Default::default())
     }
     // 发送 ping

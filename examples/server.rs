@@ -23,13 +23,13 @@ async fn main() {
                 println!("server OnConnected: {:?}", callback)
             }
             CallbackType::OnData => {
-                // println!("server OnData: {:?}", callback);
+                println!("server OnData: {:?}", callback);
             }
             CallbackType::OnError => {
-                // println!("server OnError: {:?}", callback);
+                println!("server OnError: {:?}", callback);
             }
             CallbackType::OnDisconnected => {
-                // println!("server on_disconnected: {:?}", callback);
+                println!("server on_disconnected: {:?}", callback);
             }
         }
     }

@@ -304,8 +304,7 @@ impl Kcp2KServerConnection {
     }
     pub fn tick_outgoing(&mut self) {
         match self.kcp_peer.state {
-            Kcp2KState::Connected => {}
-            Kcp2KState::Authenticated => {
+            Kcp2KState::Connected | Kcp2KState::Authenticated => {
                 let _ = self.kcp_peer.kcp.update(self.kcp_peer.watch.elapsed().as_millis() as u32);
             }
             Kcp2KState::Disconnected => {}
@@ -398,7 +397,7 @@ impl Kcp2KServerConnection {
     }
     // 处理 ping
     fn handle_ping(&mut self, elapsed_time: Duration) {
-        if elapsed_time > self.kcp_peer.last_send_ping_time + Duration::from_millis(PING_INTERVAL) {
+        if elapsed_time >= self.kcp_peer.last_send_ping_time + Duration::from_millis(PING_INTERVAL) {
             self.kcp_peer.last_send_ping_time = elapsed_time;
             let _ = self.send_ping();
         }

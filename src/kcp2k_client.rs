@@ -123,7 +123,7 @@ impl Client {
             }
         }
     }
-    fn tick_incoming(&mut self) {
+    pub fn tick_incoming(&mut self) {
         while let Some((connection_id, data)) = self.raw_receive_from() {
             self.handle_data(connection_id, data);
         }
@@ -136,7 +136,7 @@ impl Client {
             drop(self.connections.remove(&connection_id));
         }
     }
-    fn tick_outgoing(&mut self) {
+    pub fn tick_outgoing(&mut self) {
         for connection in self.connections.values_mut() {
             connection.tick_outgoing();
         }

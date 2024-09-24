@@ -4,6 +4,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Error;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tklog::info;
 
 #[derive(Debug, PartialEq)]
 pub enum Kcp2KMode {
@@ -39,10 +40,10 @@ pub fn configure_socket_buffers(socket: &Socket, recv_buffer_size: usize, send_b
     socket.set_recv_buffer_size(recv_buffer_size)?;
     socket.set_send_buffer_size(send_buffer_size)?;
 
-    println!("[KCP2K] {:?} RecvBuf = {}=>{} ({}x) SendBuf = {}=>{} ({}x)",
+    info!(format!("[KCP2K] {:?} RecvBuf = {}=>{} ({}x) SendBuf = {}=>{} ({}x)",
              kcp2k_mode,
              initial_receive, socket.recv_buffer_size()?, socket.recv_buffer_size()? / initial_receive,
-             initial_send, socket.send_buffer_size()?, socket.send_buffer_size()? / initial_send);
+             initial_send, socket.send_buffer_size()?, socket.send_buffer_size()? / initial_send));
     Ok(())
 }
 

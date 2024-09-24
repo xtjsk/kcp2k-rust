@@ -46,7 +46,7 @@ impl Default for Callback {
             connection_id: 0,
             channel: Kcp2KChannel::None,
             error_code: ErrorCode::None,
-            error_message: "default".to_string(),
+            error_message: "None".to_string(),
         }
     }
 }

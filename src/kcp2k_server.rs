@@ -5,13 +5,13 @@ use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_server_connection::Kcp2KServerConnection;
 use common::Kcp2KMode;
-use log::error;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::collections::HashMap;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use tklog::info;
 
 pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
@@ -46,8 +46,7 @@ impl Server {
     }
     pub fn start(&mut self) -> Result<(), Error> {
         common::configure_socket_buffers(&self.socket, self.config.recv_buffer_size, self.config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
-
-        println!("[KCP2K] Server listening on: {:?}", self.socket_addr.as_socket());
+        info!(format!("[KCP2K] Server listening on: {:?}", self.socket_addr.as_socket()));
         self.socket.bind(&self.socket_addr)?;
 
         Ok(())
@@ -76,8 +75,7 @@ impl Server {
                 let id = common::connection_hash(&self.new_client_sock_addr);
                 Some((id, buf[..size].to_vec()))
             }
-            Err(e) => {
-                error!("recv_from failed: {:?}", e);
+            Err(_) => {
                 None
             }
         }

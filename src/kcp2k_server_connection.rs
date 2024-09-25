@@ -18,13 +18,13 @@ pub struct Kcp2KServerConnection {
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
-    callback_fn: Arc<dyn Fn(&Callback)>,
+    callback_fn: Arc<dyn Fn(&Callback) + Send>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
 
 impl Kcp2KServerConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<Mutex<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_fn: Arc<dyn Fn(&Callback)>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<Mutex<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_fn: Arc<dyn Fn(&Callback) + Send>) -> Self {
         let mut kcp_server_connection = Kcp2KServerConnection {
             socket: Arc::clone(&socket),
             removed_connections,

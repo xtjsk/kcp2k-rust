@@ -18,13 +18,13 @@ pub struct Kcp2KServerConnection {
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
-    callback_fn: Arc<dyn Fn(&Callback) + Send>,
+    callback_fn: Arc<dyn Fn(Callback) + Send>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
 
 impl Kcp2KServerConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<Mutex<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_fn: Arc<dyn Fn(&Callback) + Send>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<Mutex<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_fn: Arc<dyn Fn(Callback) + Send>) -> Self {
         let mut kcp_server_connection = Kcp2KServerConnection {
             socket: Arc::clone(&socket),
             removed_connections,
@@ -49,7 +49,7 @@ impl Kcp2KServerConnection {
         self.connection_id = connection_id;
     }
     fn on_connected(&mut self) {
-        (self.callback_fn)(&Callback {
+        (self.callback_fn)(Callback {
             callback_type: CallbackType::OnConnected,
             connection_id: self.connection_id,
             ..Default::default()
@@ -61,7 +61,7 @@ impl Kcp2KServerConnection {
         self.on_connected()
     }
     fn on_data(&mut self, data: &[u8], kcp2k_channel: Kcp2KChannel) {
-        (self.callback_fn)(&Callback {
+        (self.callback_fn)(Callback {
             callback_type: CallbackType::OnData,
             data: data.to_vec(),
             channel: kcp2k_channel,
@@ -81,14 +81,14 @@ impl Kcp2KServerConnection {
         // 添加到移除列表
         self.removed_connections.lock().unwrap().push(self.connection_id);
         // 回调
-        (self.callback_fn)(&Callback {
+        (self.callback_fn)(Callback {
             callback_type: CallbackType::OnDisconnected,
             connection_id: self.connection_id,
             ..Default::default()
         });
     }
     fn on_error(&mut self, error_code: ErrorCode, error_message: String) {
-        (self.callback_fn)(&Callback {
+        (self.callback_fn)(Callback {
             callback_type: CallbackType::OnError,
             connection_id: self.connection_id,
             error_code,

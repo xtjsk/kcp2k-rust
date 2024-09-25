@@ -1,9 +1,9 @@
-use std::sync::Arc;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
 use kcp2k_rust::kcp2k_server::Server;
+use std::sync::Arc;
 
 async fn update_several_times(amount: usize, server: &mut Server, client: &mut Client, interval: u64) {
     let interval = std::time::Duration::from_millis(interval);
@@ -20,7 +20,7 @@ async fn main() {
     let config = Kcp2KConfig::default();
 
     // 回调
-    fn s_callback_fn(callback: &kcp2k_rust::kcp2k_callback::Callback) {
+    fn s_callback_fn(callback: kcp2k_rust::kcp2k_callback::Callback) {
         match callback.callback_type {
             CallbackType::OnConnected => {
                 println!("server OnConnected: {:?}", callback)
@@ -42,7 +42,7 @@ async fn main() {
 
 
     // 回调
-    fn c_callback_fn(callback: &kcp2k_rust::kcp2k_callback::Callback) {
+    fn c_callback_fn(callback: kcp2k_rust::kcp2k_callback::Callback) {
         match callback.callback_type {
             CallbackType::OnConnected => {
                 println!("client OnConnected: {:?}", callback)

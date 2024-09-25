@@ -1,4 +1,5 @@
 use crate::common;
+use crate::common::Kcp2KMode;
 use crate::error_code::ErrorCode;
 use crate::kcp2k_callback::Callback;
 use crate::kcp2k_channel::Kcp2KChannel;
@@ -12,7 +13,6 @@ use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tklog::{debug, info};
-use crate::common::Kcp2KMode;
 
 pub struct Client {
     config: Arc<Kcp2KConfig>,  // 配置

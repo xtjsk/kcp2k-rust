@@ -20,12 +20,12 @@ pub struct Server {
     new_client_sock_addr: Arc<SockAddr>, // new_client_sock_addr
     connections: HashMap<u64, Kcp2KServerConnection>,
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
-    callback_fn: Arc<dyn Fn(&Callback) +Send>,
+    callback_fn: Arc<dyn Fn(&Callback) + Send>,
 }
 
 
 impl Server {
-    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: Arc<dyn Fn(&Callback)+Send>) -> Result<Self, Error> {
+    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: Arc<dyn Fn(&Callback) + Send>) -> Result<Self, Error> {
         let address: SocketAddr = addr.parse().unwrap();
 
         let domain = if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 };

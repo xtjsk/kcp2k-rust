@@ -17,7 +17,6 @@ pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
     socket_addr: SockAddr, // socket_addr
-    new_client_sock_addr: Arc<SockAddr>, // new_client_sock_addr
     connections: HashMap<u64, Kcp2KServerConnection>,
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
     callback_fn: Arc<dyn Fn(Callback) + Send>,
@@ -36,7 +35,6 @@ impl Server {
             config: Arc::new(config),
             socket: Arc::new(socket),
             socket_addr: address.into(),
-            new_client_sock_addr: Arc::new(addr.parse::<SocketAddr>().map(SockAddr::from).unwrap()),
             connections: HashMap::new(),
             removed_connections: Arc::new(Mutex::new(Vec::new())),
             callback_fn,
@@ -65,46 +63,43 @@ impl Server {
         self.tick_incoming();
         self.tick_outgoing();
     }
-    fn raw_receive_from(&mut self) -> Option<(u64, Vec<u8>)> {
+    fn raw_receive_from(&mut self) -> Option<(SockAddr, Vec<u8>)> {
         let mut buf: [MaybeUninit<u8>; 1024] = unsafe { MaybeUninit::uninit().assume_init() };
-
         match self.socket.recv_from(&mut buf) {
-            Ok((size, client_addr)) => {
-                self.new_client_sock_addr = Arc::new(client_addr);
-                let buf: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len()) };
-                let id = common::connection_hash(&self.new_client_sock_addr);
-                Some((id, buf[..size].to_vec()))
+            Ok((size, sock_addr)) => {
+                let buf = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len()) };
+                Some((sock_addr, buf[..size].to_vec()))
             }
-            Err(_) => {
-                None
-            }
+            Err(_) => None
         }
     }
-    fn create_connection(&mut self, connection_id: u64) {
+    fn create_connection(&mut self, connection_id: u64, sock_addr: &SockAddr) {
         let kcp_server_connection = Kcp2KServerConnection::new(
             Arc::clone(&self.config),
             Arc::new(common::generate_cookie()),
             Arc::clone(&self.socket),
             connection_id,
-            Arc::clone(&self.new_client_sock_addr),
+            Arc::new(sock_addr.clone()),
             Arc::clone(&self.removed_connections),
             Arc::new(Kcp2KMode::Server),
             Arc::clone(&self.callback_fn),
         );
         self.connections.insert(connection_id, kcp_server_connection);
     }
-    fn handle_data(&mut self, connection_id: u64, data: Vec<u8>) {
+    fn handle_data(&mut self, sock_addr: &SockAddr, data: Vec<u8>) {
+        // 生成连接 ID
+        let connection_id = common::connection_hash(sock_addr);
         // 如果连接存在，则处理数据
         if let Some(connection) = self.connections.get_mut(&connection_id) {
             let _ = connection.raw_input(data);
         } else { // 如果连接不存在，则创建连接
-            self.create_connection(connection_id);
-            self.handle_data(connection_id, data);
+            self.create_connection(connection_id, sock_addr);
+            self.handle_data(sock_addr, data);
         }
     }
     pub fn tick_incoming(&mut self) {
-        while let Some((connection_id, data)) = self.raw_receive_from() {
-            self.handle_data(connection_id, data);
+        while let Some((sock_addr, data)) = self.raw_receive_from() {
+            self.handle_data(&sock_addr, data);
         }
 
         for connection in self.connections.values_mut() {

@@ -104,6 +104,7 @@ impl Kcp2KServerConnection {
     }
     pub fn raw_input(&mut self, segment: Vec<u8>) -> Result<(), ErrorCode> {
         if segment.len() <= 5 {
+            self.on_error(ErrorCode::InvalidReceive, format!("{}: Received invalid message with length={}. Disconnecting the connection.", std::any::type_name::<Self>(), segment.len()));
             return Err(ErrorCode::InvalidReceive);
         }
 
@@ -130,7 +131,10 @@ impl Kcp2KServerConnection {
         match Kcp2KChannel::from(channel) {
             Kcp2KChannel::Reliable => self.raw_input_reliable(message),
             Kcp2KChannel::Unreliable => self.raw_input_unreliable(message),
-            _ => Err(ErrorCode::Unexpected)
+            _ => {
+                self.on_error(ErrorCode::Unexpected, format!("{}: Received message with unexpected channel: {:?}. Disconnecting the connection.", std::any::type_name::<Self>(), channel));
+                Err(ErrorCode::Unexpected)
+            }
         }
     }
     fn receive_next_reliable(&mut self) -> Option<(Kcp2KHeaderReliable, Vec<u8>)> {

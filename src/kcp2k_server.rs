@@ -49,8 +49,11 @@ impl Server {
 
         Ok(())
     }
-    pub fn stop(&mut self) {
-        self.socket.shutdown(std::net::Shutdown::Both).unwrap();
+    pub fn stop(&mut self) -> Result<(), Error> {
+        match self.socket.shutdown(std::net::Shutdown::Both) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Error::from_raw_os_error(0))
+        }
     }
     pub fn send(&mut self, connection_id: u64, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         if let Some(connection) = self.connections.get_mut(&connection_id) {
@@ -58,10 +61,6 @@ impl Server {
         } else {
             Err(ErrorCode::ConnectionNotFound)
         }
-    }
-    pub fn tick(&mut self) {
-        self.tick_incoming();
-        self.tick_outgoing();
     }
     fn raw_receive_from(&mut self) -> Option<(SockAddr, Vec<u8>)> {
         let mut buf: [MaybeUninit<u8>; 1024] = unsafe { MaybeUninit::uninit().assume_init() };
@@ -71,6 +70,17 @@ impl Server {
                 Some((sock_addr, buf[..size].to_vec()))
             }
             Err(_) => None
+        }
+    }
+    fn handle_data(&mut self, sock_addr: &SockAddr, data: Vec<u8>) {
+        // 生成连接 ID
+        let connection_id = common::connection_hash(sock_addr);
+        // 如果连接存在，则处理数据
+        if let Some(connection) = self.connections.get_mut(&connection_id) {
+            let _ = connection.raw_input(data);
+        } else { // 如果连接不存在，则创建连接
+            self.create_connection(connection_id, sock_addr);
+            self.handle_data(sock_addr, data);
         }
     }
     fn create_connection(&mut self, connection_id: u64, sock_addr: &SockAddr) {
@@ -86,16 +96,9 @@ impl Server {
         );
         self.connections.insert(connection_id, kcp_server_connection);
     }
-    fn handle_data(&mut self, sock_addr: &SockAddr, data: Vec<u8>) {
-        // 生成连接 ID
-        let connection_id = common::connection_hash(sock_addr);
-        // 如果连接存在，则处理数据
-        if let Some(connection) = self.connections.get_mut(&connection_id) {
-            let _ = connection.raw_input(data);
-        } else { // 如果连接不存在，则创建连接
-            self.create_connection(connection_id, sock_addr);
-            self.handle_data(sock_addr, data);
-        }
+    pub fn tick(&mut self) {
+        self.tick_incoming();
+        self.tick_outgoing();
     }
     pub fn tick_incoming(&mut self) {
         while let Some((sock_addr, data)) = self.raw_receive_from() {
@@ -114,6 +117,9 @@ impl Server {
         for connection in self.connections.values_mut() {
             connection.tick_outgoing();
         }
+    }
+    pub fn get_connection(&self, connection_id: u64) -> Option<&Kcp2KServerConnection> {
+        self.connections.get(&connection_id)
     }
     pub fn get_connections(&self) -> &HashMap<u64, Kcp2KServerConnection> {
         &self.connections

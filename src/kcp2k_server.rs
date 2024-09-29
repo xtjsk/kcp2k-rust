@@ -3,7 +3,7 @@ use crate::error_code::ErrorCode;
 use crate::kcp2k_callback::Callback;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
-use crate::kcp2k_server_connection::Kcp2KServerConnection;
+use crate::kcp2k_connection::Kcp2KConnection;
 use common::Kcp2KMode;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::collections::HashMap;
@@ -17,7 +17,7 @@ pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
     socket_addr: SockAddr, // socket_addr
-    connections: HashMap<u64, Kcp2KServerConnection>,
+    connections: HashMap<u64, Kcp2KConnection>,
     removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
     callback_fn: Arc<dyn Fn(Callback) + Send>,
 }
@@ -84,7 +84,7 @@ impl Server {
         }
     }
     fn create_connection(&mut self, connection_id: u64, sock_addr: &SockAddr) {
-        let kcp_server_connection = Kcp2KServerConnection::new(
+        let kcp_server_connection = Kcp2KConnection::new(
             Arc::clone(&self.config),
             Arc::new(common::generate_cookie()),
             Arc::clone(&self.socket),
@@ -118,10 +118,10 @@ impl Server {
             connection.tick_outgoing();
         }
     }
-    pub fn get_connection(&self, connection_id: u64) -> Option<&Kcp2KServerConnection> {
+    pub fn get_connection(&self, connection_id: u64) -> Option<&Kcp2KConnection> {
         self.connections.get(&connection_id)
     }
-    pub fn get_connections(&self) -> &HashMap<u64, Kcp2KServerConnection> {
+    pub fn get_connections(&self) -> &HashMap<u64, Kcp2KConnection> {
         &self.connections
     }
 }

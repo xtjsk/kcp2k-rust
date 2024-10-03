@@ -34,7 +34,7 @@ impl Kcp2KPeer {
         // message. so while Kcp.MTU_DEF is perfect, we actually need to
         // tell kcp to use MTU-1 so we can still put the header into the
         // message afterwards.
-        kcp.set_mtu(config.mtu - METADATA_SIZE_RELIABLE).expect("TODO: panic message");
+        kcp.set_mtu(config.mtu - METADATA_SIZE_RELIABLE).expect("set_mtu failed");
 
         // set maximum retransmits (aka dead_link)
         kcp.set_maximum_resend_times(config.max_retransmits);

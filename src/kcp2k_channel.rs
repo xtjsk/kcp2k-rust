@@ -1,4 +1,5 @@
 #[derive(Debug, PartialEq, Clone, Copy)]
+#[repr(u8)]
 pub enum Kcp2KChannel {
     None = 0,
     Reliable = 1,

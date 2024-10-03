@@ -1,9 +1,12 @@
 use crate::error_code::ErrorCode;
 use crate::kcp2k_channel::Kcp2KChannel;
 use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
+
+pub type ServerCallbackFn = Arc<dyn Fn(ServerCallback) + Send>;
 
 #[derive(Debug)]
-pub enum CallbackType {
+pub enum ServerCallbackType {
     OnConnected,
     OnData,
     OnDisconnected,
@@ -11,37 +14,37 @@ pub enum CallbackType {
 }
 
 // Callback: 服务器回调
-pub struct Callback {
-    pub callback_type: CallbackType,
+pub struct ServerCallback {
+    pub callback_type: ServerCallbackType,
     pub connection_id: u64,
     pub data: Vec<u8>,
     pub channel: Kcp2KChannel,
     pub error_code: ErrorCode,
     pub error_message: String,
 }
-impl Debug for Callback {
+impl Debug for ServerCallback {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.callback_type {
-            CallbackType::OnConnected => {
+            ServerCallbackType::OnConnected => {
                 write!(f, "OnConnected: id {} ", self.connection_id)
             }
-            CallbackType::OnData => {
+            ServerCallbackType::OnData => {
                 write!(f, "OnData: id {} {:?} {:?}", self.connection_id, self.channel, self.data)
             }
-            CallbackType::OnDisconnected => {
+            ServerCallbackType::OnDisconnected => {
                 write!(f, "OnDisconnected: id {}", self.connection_id)
             }
-            CallbackType::OnError => {
+            ServerCallbackType::OnError => {
                 write!(f, "OnError: id {} - {:?} {}", self.connection_id, self.error_code, self.error_message)
             }
         }
     }
 }
 
-impl Default for Callback {
+impl Default for ServerCallback {
     fn default() -> Self {
         Self {
-            callback_type: CallbackType::OnError,
+            callback_type: ServerCallbackType::OnError,
             data: vec![],
             connection_id: 0,
             channel: Kcp2KChannel::None,

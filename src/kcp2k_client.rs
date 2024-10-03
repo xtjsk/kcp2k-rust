@@ -1,56 +1,48 @@
 use crate::common;
 use crate::common::Kcp2KMode;
 use crate::error_code::ErrorCode;
-use crate::kcp2k_callback::Callback;
+use crate::kcp2k_callback::ServerCallbackFn;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
-use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_connection::Kcp2KConnection;
+use crate::kcp2k_peer::Kcp2KPeer;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::collections::HashMap;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tklog::{debug, info};
 
 pub struct Client {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
-    socket_addr: Arc<SockAddr>, // socket_addr
     connections: HashMap<u64, Kcp2KConnection>,
-    removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
-    callback_fn: Arc<dyn Fn(Callback) + Send>,
+    removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
+    callback_fn: ServerCallbackFn,
     client_model_default_connection_id: u64,
 }
 
 impl Client {
-    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: Arc<dyn Fn(Callback) + Send>) -> Result<Self, Error> {
+    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: ServerCallbackFn) -> Result<Self, Error> {
         let address: SocketAddr = addr.parse().unwrap();
 
-        let domain = if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 };
-        let socket = Socket::new(domain, Type::DGRAM, Option::from(Protocol::UDP))?;
+        let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
+        common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Client))?;
+        socket.connect(&address.into())?;
         socket.set_nonblocking(true)?;
 
-        let instance = Client {
+        let mut instance = Client {
             config: Arc::new(config),
             socket: Arc::new(socket),
-            socket_addr: Arc::new(address.into()),
             connections: HashMap::new(),
-            removed_connections: Arc::new(Mutex::new(Vec::new())),
+            removed_connections: Arc::new(RwLock::new(Vec::new())),
             callback_fn,
             client_model_default_connection_id: rand::random(),
         };
-
+        instance.create_connection(instance.client_model_default_connection_id, &address.into());
+        info!(format!("[KCP2K] Client connecting to: {:?}", instance.socket.peer_addr()?.as_socket().unwrap()));
         Ok(instance)
-    }
-
-    pub fn connect(&mut self) -> Result<(), Error> {
-        common::configure_socket_buffers(&self.socket, self.config.recv_buffer_size, self.config.send_buffer_size, Arc::new(Kcp2KMode::Client))?;
-        info!(format!("[KCP2K] Client connecting to: {:?}", self.socket_addr.as_socket()));
-        self.socket.connect(&self.socket_addr)?;
-        self.create_client_connection(self.client_model_default_connection_id, &Arc::clone(&self.socket_addr));
-        Ok(())
     }
 
     pub fn disconnect(&mut self) {
@@ -81,7 +73,7 @@ impl Client {
             Err(_) => None
         }
     }
-    fn create_client_connection(&mut self, connection_id: u64, sock_addr: &SockAddr) {
+    fn create_connection(&mut self, connection_id: u64, sock_addr: &SockAddr) {
         let kcp_client_connection = Kcp2KConnection::new(
             Arc::clone(&self.config),
             Arc::new(common::generate_cookie()),
@@ -127,7 +119,7 @@ impl Client {
             connection.tick_incoming();
         }
 
-        while let Some(connection_id) = self.removed_connections.lock().unwrap().pop() {
+        while let Some(connection_id) = self.removed_connections.write().unwrap().pop() {
             drop(self.connections.remove(&connection_id));
         }
     }

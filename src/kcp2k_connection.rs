@@ -1,6 +1,6 @@
 use crate::common::Kcp2KMode;
 use crate::error_code::ErrorCode;
-use crate::kcp2k_callback::{Callback, CallbackType};
+use crate::kcp2k_callback::{ServerCallback, ServerCallbackFn, ServerCallbackType};
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_config::PING_INTERVAL;
@@ -9,22 +9,22 @@ use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::BufMut;
 use socket2::{SockAddr, Socket};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 // KcpServerConnection
 pub struct Kcp2KConnection {
     socket: Arc<Socket>,
-    removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
+    removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
-    callback_fn: Arc<dyn Fn(Callback) + Send>,
+    callback_fn: ServerCallbackFn,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
 
 impl Kcp2KConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<Mutex<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_fn: Arc<dyn Fn(Callback) + Send>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<RwLock<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_fn: ServerCallbackFn) -> Self {
         let mut kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
             removed_connections,
@@ -49,8 +49,8 @@ impl Kcp2KConnection {
         self.connection_id = connection_id;
     }
     fn on_connected(&mut self) {
-        (self.callback_fn)(Callback {
-            callback_type: CallbackType::OnConnected,
+        (self.callback_fn)(ServerCallback {
+            callback_type: ServerCallbackType::OnConnected,
             connection_id: self.connection_id,
             ..Default::default()
         });
@@ -61,8 +61,8 @@ impl Kcp2KConnection {
         self.on_connected()
     }
     fn on_data(&mut self, data: &[u8], kcp2k_channel: Kcp2KChannel) {
-        (self.callback_fn)(Callback {
-            callback_type: CallbackType::OnData,
+        (self.callback_fn)(ServerCallback {
+            callback_type: ServerCallbackType::OnData,
             data: data.to_vec(),
             channel: kcp2k_channel,
             connection_id: self.connection_id,
@@ -79,17 +79,17 @@ impl Kcp2KConnection {
         // 设置状态为断开
         self.kcp_peer.state = Kcp2KPeerState::Disconnected;
         // 添加到移除列表
-        self.removed_connections.lock().unwrap().push(self.connection_id);
+        self.removed_connections.write().unwrap().push(self.connection_id);
         // 回调
-        (self.callback_fn)(Callback {
-            callback_type: CallbackType::OnDisconnected,
+        (self.callback_fn)(ServerCallback {
+            callback_type: ServerCallbackType::OnDisconnected,
             connection_id: self.connection_id,
             ..Default::default()
         });
     }
     fn on_error(&mut self, error_code: ErrorCode, error_message: String) {
-        (self.callback_fn)(Callback {
-            callback_type: CallbackType::OnError,
+        (self.callback_fn)(ServerCallback {
+            callback_type: ServerCallbackType::OnError,
             connection_id: self.connection_id,
             error_code,
             error_message,

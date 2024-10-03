@@ -1,6 +1,6 @@
 use crate::common;
 use crate::error_code::ErrorCode;
-use crate::kcp2k_callback::Callback;
+use crate::kcp2k_callback::ServerCallbackFn;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
@@ -10,44 +10,34 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tklog::info;
 
 pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
-    socket_addr: SockAddr, // socket_addr
     connections: HashMap<u64, Kcp2KConnection>,
-    removed_connections: Arc<Mutex<Vec<u64>>>, // removed_connections
-    callback_fn: Arc<dyn Fn(Callback) + Send>,
+    removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
+    callback_fn: ServerCallbackFn,
 }
 
 
 impl Server {
-    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: Arc<dyn Fn(Callback) + Send>) -> Result<Self, Error> {
-        let address: SocketAddr = addr.parse().unwrap();
-
-        let domain = if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 };
-        let socket = Socket::new(domain, Type::DGRAM, Option::from(Protocol::UDP))?;
+    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: ServerCallbackFn) -> Result<Self, Error> {
+        let socket_addr: SocketAddr = addr.parse().unwrap();
+        let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
+        common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
+        socket.bind(&socket_addr.into())?;
         socket.set_nonblocking(true)?;
-
         let instance = Server {
             config: Arc::new(config),
             socket: Arc::new(socket),
-            socket_addr: address.into(),
             connections: HashMap::new(),
-            removed_connections: Arc::new(Mutex::new(Vec::new())),
+            removed_connections: Arc::new(RwLock::new(Vec::new())),
             callback_fn,
         };
-
+        info!(format!("[KCP2K] Server bind on: {:?}", instance.socket.local_addr()?.as_socket().unwrap()));
         Ok(instance)
-    }
-    pub fn start(&mut self) -> Result<(), Error> {
-        common::configure_socket_buffers(&self.socket, self.config.recv_buffer_size, self.config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
-        info!(format!("[KCP2K] Server listening on: {:?}", self.socket_addr.as_socket()));
-        self.socket.bind(&self.socket_addr)?;
-
-        Ok(())
     }
     pub fn stop(&mut self) -> Result<(), Error> {
         match self.socket.shutdown(std::net::Shutdown::Both) {
@@ -109,7 +99,7 @@ impl Server {
             connection.tick_incoming();
         }
 
-        while let Some(connection_id) = self.removed_connections.lock().unwrap().pop() {
+        while let Some(connection_id) = self.removed_connections.write().unwrap().pop() {
             drop(self.connections.remove(&connection_id));
         }
     }

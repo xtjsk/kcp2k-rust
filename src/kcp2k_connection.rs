@@ -7,7 +7,7 @@ use crate::kcp2k_config::PING_INTERVAL;
 use crate::kcp2k_header::{Kcp2KHeaderReliable, Kcp2KHeaderUnreliable};
 use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_state::Kcp2KPeerState;
-use bytes::BufMut;
+use bytes::{BufMut, Bytes, BytesMut};
 use socket2::{SockAddr, Socket};
 use std::sync::{mpsc, Arc, RwLock};
 use std::time::Duration;
@@ -24,7 +24,7 @@ pub struct Kcp2KConnection {
 }
 
 impl Kcp2KConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<RwLock<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<ServerCallback>>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<RwLock<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<ServerCallback>>) -> Self {
         let mut kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
             removed_connections,
@@ -102,7 +102,7 @@ impl Kcp2KConnection {
             Err(_) => Err(ErrorCode::SendError)
         }
     }
-    pub fn raw_input(&mut self, segment: Vec<u8>) -> Result<(), ErrorCode> {
+    pub fn raw_input(&mut self, segment: Bytes) -> Result<(), ErrorCode> {
         if segment.len() <= 5 {
             self.on_error(ErrorCode::InvalidReceive, format!("{}: Received invalid message with length={}. Disconnecting the connection.", std::any::type_name::<Self>(), segment.len()));
             return Err(ErrorCode::InvalidReceive);
@@ -123,7 +123,7 @@ impl Kcp2KConnection {
         }
 
         // 消息
-        let message = &segment[5..];
+        let message = Bytes::copy_from_slice(&segment[5..]);
 
         self.kcp_peer.last_recv_time = self.kcp_peer.watch.elapsed();
 
@@ -137,9 +137,9 @@ impl Kcp2KConnection {
             }
         }
     }
-    fn receive_next_reliable(&mut self) -> Option<(Kcp2KHeaderReliable, Vec<u8>)> {
+    fn receive_next_reliable(&mut self) -> Option<(Kcp2KHeaderReliable, Bytes)> {
         // 用于存储接收到的数据
-        let mut buffer = vec![];
+        let mut buffer = BytesMut::new();
         // 初始化 buffer 大小
         match self.kcp_peer.kcp.peeksize() {
             Ok(size) => {
@@ -162,7 +162,7 @@ impl Kcp2KConnection {
                 match Kcp2KHeaderReliable::parse(header_byte) {
                     Some(header) => {
                         // 从 buffer 中提取消息
-                        Some((header, buffer[1..size].to_vec()))
+                        Some((header, Bytes::copy_from_slice(&buffer[1..size])))
                     }
                     None => {
                         let _ = self.on_error(ErrorCode::InvalidReceive, format!("[KCP-2K] {}: Receive failed to parse header: {} is not defined in {}.", std::any::type_name::<Self>(), header_byte, std::any::type_name::<Kcp2KHeaderReliable>()));
@@ -178,7 +178,7 @@ impl Kcp2KConnection {
             }
         }
     }
-    fn raw_input_reliable(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
+    fn raw_input_reliable(&mut self, data: Bytes) -> Result<(), ErrorCode> {
         if let Err(e) = self.kcp_peer.kcp.input(&data) {
             self.on_error(ErrorCode::InvalidReceive,
                           format!("[KCP2K] {}: Input failed with error={:?} for buffer with length={}",
@@ -190,7 +190,7 @@ impl Kcp2KConnection {
             Ok(())
         }
     }
-    fn raw_input_unreliable(&mut self, data: &[u8]) -> Result<(), ErrorCode> {
+    fn raw_input_unreliable(&mut self, data: Bytes) -> Result<(), ErrorCode> {
         // 至少需要一个字节用于 header
         if data.len() < 1 {
             return Err(ErrorCode::InvalidReceive);

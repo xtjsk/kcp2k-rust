@@ -1,3 +1,4 @@
+use bytes::{Bytes, BytesMut};
 use rand::TryRngCore;
 use socket2::{SockAddr, Socket};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -22,11 +23,11 @@ pub fn connection_hash(sock_addr: &SockAddr) -> u64 {
 
 
 // 生成一个随机的 4 字节 cookie
-pub fn generate_cookie() -> Vec<u8> {
+pub fn generate_cookie() -> Bytes {
     let mut rng = rand::rngs::OsRng;
     let mut buffer = [0u8; 4];
     let _ = rng.try_fill_bytes(&mut buffer);
-    buffer.to_vec()
+    Bytes::copy_from_slice(&buffer)
 }
 
 // 如果连接在重负载下下降，请增加到 OS 限制。

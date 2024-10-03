@@ -1,7 +1,7 @@
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::{Kcp2KConfig, METADATA_SIZE_RELIABLE};
 use crate::kcp2k_state::Kcp2KPeerState;
-use bytes::BufMut;
+use bytes::{BufMut, Bytes, BytesMut};
 use kcp::Kcp;
 use socket2::{SockAddr, Socket};
 use std::io;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub struct Kcp2KPeer {
-    pub cookie: Arc<Vec<u8>>, // cookie
+    pub cookie: Arc<Bytes>, // cookie
     pub state: Kcp2KPeerState,  // 状态
     pub kcp: Kcp<UdpOutput>, // kcp
     pub watch: Instant,
@@ -20,7 +20,7 @@ pub struct Kcp2KPeer {
 }
 
 impl Kcp2KPeer {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Vec<u8>>, socket: Arc<Socket>, client_sock_addr: Arc<SockAddr>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, client_sock_addr: Arc<SockAddr>) -> Self {
         // set up kcp over reliable channel (that's what kcp is for)
         let udp_output = UdpOutput::new(Arc::clone(&cookie), Arc::clone(&socket), Arc::clone(&client_sock_addr));
         // kcp
@@ -53,14 +53,14 @@ impl Kcp2KPeer {
 
 #[derive(Debug)]
 pub struct UdpOutput {
-    cookie: Arc<Vec<u8>>, // cookie
+    cookie: Arc<Bytes>, // cookie
     socket: Arc<Socket>, // socket
     client_sock_addr: Arc<SockAddr>, // client_sock_addr
 }
 
 impl UdpOutput {
     // 创建一个新的 Writer，用于将数据包写入 UdpSocket
-    pub fn new(cookie: Arc<Vec<u8>>, socket: Arc<Socket>, client_sock_addr: Arc<SockAddr>) -> UdpOutput {
+    pub fn new(cookie: Arc<Bytes>, socket: Arc<Socket>, client_sock_addr: Arc<SockAddr>) -> UdpOutput {
         UdpOutput {
             cookie,
             socket,
@@ -73,7 +73,7 @@ impl Write for UdpOutput {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
 
         // 创建一个缓冲区，用于存储消息内容
-        let mut buffer = vec![];
+        let mut buffer = BytesMut::new();
 
         // 写入通道头部
         buffer.put_u8(Kcp2KChannel::Reliable.to_u8());

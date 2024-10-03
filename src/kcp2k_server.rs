@@ -1,9 +1,10 @@
 use crate::common;
 use crate::error_code::ErrorCode;
-use crate::kcp2k_callback::{ServerCallback};
+use crate::kcp2k_callback::ServerCallback;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
+use bytes::Bytes;
 use common::Kcp2KMode;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::collections::HashMap;
@@ -53,17 +54,17 @@ impl Server {
             Err(ErrorCode::ConnectionNotFound)
         }
     }
-    fn raw_receive_from(&mut self) -> Option<(SockAddr, Vec<u8>)> {
+    fn raw_receive_from(&mut self) -> Option<(SockAddr, Bytes)> {
         let mut buf: [MaybeUninit<u8>; 1024] = unsafe { MaybeUninit::uninit().assume_init() };
         match self.socket.recv_from(&mut buf) {
             Ok((size, sock_addr)) => {
                 let buf = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len()) };
-                Some((sock_addr, buf[..size].to_vec()))
+                Some((sock_addr, Bytes::copy_from_slice(&buf[..size])))
             }
             Err(_) => None
         }
     }
-    fn handle_data(&mut self, sock_addr: &SockAddr, data: Vec<u8>) {
+    fn handle_data(&mut self, sock_addr: &SockAddr, data: Bytes) {
         // 生成连接 ID
         let connection_id = common::connection_hash(sock_addr);
         // 如果连接存在，则处理数据

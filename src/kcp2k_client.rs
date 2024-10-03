@@ -6,6 +6,7 @@ use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
 use crate::kcp2k_peer::Kcp2KPeer;
+use bytes::{Bytes};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::collections::HashMap;
 use std::io::Error;
@@ -61,13 +62,13 @@ impl Client {
         self.tick_outgoing();
     }
 
-    fn raw_receive_from(&mut self) -> Option<(SockAddr, Vec<u8>)> {
+    fn raw_receive_from(&mut self) -> Option<(SockAddr, Bytes)> {
         let mut buf: [MaybeUninit<u8>; 1024] = unsafe { MaybeUninit::uninit().assume_init() };
 
         match self.socket.recv_from(&mut buf) {
             Ok((size, sock_addr)) => {
                 let buf = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut u8, buf.len()) };
-                Some((sock_addr, buf[..size].to_vec()))
+                Some((sock_addr, Bytes::copy_from_slice(&buf[..size])))
             }
             Err(_) => None
         }
@@ -85,7 +86,7 @@ impl Client {
         );
         self.connections.insert(connection_id, kcp_client_connection);
     }
-    fn handle_data(&mut self, sock_addr: &SockAddr, data: Vec<u8>) {
+    fn handle_data(&mut self, sock_addr: &SockAddr, data: Bytes) {
         // 生成连接 ID
         let connection_id = common::connection_hash(&sock_addr);
         // 如果连接存在，则处理数据
@@ -94,7 +95,7 @@ impl Client {
         } else { // 如果是客户端模式
             let mut cookie = common::generate_cookie();
             if data.len() > 4 {
-                cookie = data[1..5].to_vec();
+                cookie = Bytes::copy_from_slice(&data[1..5]);
                 debug!( format!("[KCP2K] Client received handshake with cookie={:?}", cookie));
             }
             match self.connections.remove(&self.client_model_default_connection_id) {

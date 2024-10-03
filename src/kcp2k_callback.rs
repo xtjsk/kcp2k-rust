@@ -1,9 +1,6 @@
 use crate::error_code::ErrorCode;
 use crate::kcp2k_channel::Kcp2KChannel;
 use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-
-pub type ServerCallbackFn = Arc<dyn Fn(ServerCallback) + Send>;
 
 #[derive(Debug)]
 pub enum ServerCallbackType {

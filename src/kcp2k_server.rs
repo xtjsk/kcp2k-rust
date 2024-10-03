@@ -1,6 +1,6 @@
 use crate::common;
 use crate::error_code::ErrorCode;
-use crate::kcp2k_callback::ServerCallbackFn;
+use crate::kcp2k_callback::{ServerCallback};
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
+use std::sync::{mpsc, Arc, RwLock};
 use tklog::info;
 
 pub struct Server {
@@ -18,26 +18,27 @@ pub struct Server {
     socket: Arc<Socket>, // socket
     connections: HashMap<u64, Kcp2KConnection>,
     removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
-    callback_fn: ServerCallbackFn,
+    callback_tx: Arc<mpsc::Sender<ServerCallback>>,
 }
 
 
 impl Server {
-    pub fn new(config: Kcp2KConfig, addr: String, callback_fn: ServerCallbackFn) -> Result<Self, Error> {
+    pub fn new(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<ServerCallback>), Error> {
         let socket_addr: SocketAddr = addr.parse().unwrap();
         let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
         common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
-        socket.bind(&socket_addr.into())?;
         socket.set_nonblocking(true)?;
+        socket.bind(&socket_addr.into())?;
+        let (callback_tx, callback_rx) = mpsc::channel::<ServerCallback>();
         let instance = Server {
             config: Arc::new(config),
             socket: Arc::new(socket),
             connections: HashMap::new(),
             removed_connections: Arc::new(RwLock::new(Vec::new())),
-            callback_fn,
+            callback_tx: Arc::new(callback_tx),
         };
         info!(format!("[KCP2K] Server bind on: {:?}", instance.socket.local_addr()?.as_socket().unwrap()));
-        Ok(instance)
+        Ok((instance, callback_rx))
     }
     pub fn stop(&mut self) -> Result<(), Error> {
         match self.socket.shutdown(std::net::Shutdown::Both) {
@@ -69,20 +70,20 @@ impl Server {
         if let Some(connection) = self.connections.get_mut(&connection_id) {
             let _ = connection.raw_input(data);
         } else { // 如果连接不存在，则创建连接
-            self.create_connection(connection_id, sock_addr);
+            self.create_connection(connection_id, sock_addr.clone());
             self.handle_data(sock_addr, data);
         }
     }
-    fn create_connection(&mut self, connection_id: u64, sock_addr: &SockAddr) {
+    fn create_connection(&mut self, connection_id: u64, sock_addr: SockAddr) {
         let kcp_server_connection = Kcp2KConnection::new(
             Arc::clone(&self.config),
             Arc::new(common::generate_cookie()),
             Arc::clone(&self.socket),
             connection_id,
-            Arc::new(sock_addr.clone()),
+            Arc::new(sock_addr),
             Arc::clone(&self.removed_connections),
             Arc::new(Kcp2KMode::Server),
-            Arc::clone(&self.callback_fn),
+            Arc::clone(&self.callback_tx),
         );
         self.connections.insert(connection_id, kcp_server_connection);
     }

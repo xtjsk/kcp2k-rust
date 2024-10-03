@@ -6,7 +6,7 @@ use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
 use crate::kcp2k_peer::Kcp2KPeer;
-use bytes::{Bytes};
+use bytes::Bytes;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::collections::HashMap;
 use std::io::Error;
@@ -96,7 +96,7 @@ impl Client {
             let mut cookie = common::generate_cookie();
             if data.len() > 4 {
                 cookie = Bytes::copy_from_slice(&data[1..5]);
-                debug!( format!("[KCP2K] Client received handshake with cookie={:?}", cookie));
+                debug!( format!("[KCP2K] Client received handshake with cookie={:?}", cookie.to_vec()));
             }
             match self.connections.remove(&self.client_model_default_connection_id) {
                 Some(mut conn) => {

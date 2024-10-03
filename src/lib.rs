@@ -3,7 +3,7 @@ pub mod kcp2k_config;
 pub mod error_code;
 pub mod kcp2k_channel;
 pub mod packet;
-mod common;
+pub mod common;
 mod kcp2k_header;
 mod kcp2k_peer;
 mod kcp2k_connection;

@@ -1,4 +1,6 @@
-use bytes::{Bytes, BytesMut};
+use crate::kcp2k_client::Client;
+use crate::kcp2k_server::Server;
+use bytes::Bytes;
 use rand::TryRngCore;
 use socket2::{SockAddr, Socket};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -62,4 +64,29 @@ pub fn get_current_timestamp_millis() -> u128 {
     let start = SystemTime::now();
     let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
     since_the_epoch.as_millis()
+}
+
+#[allow(dead_code)]
+pub fn update_client_times(amount: usize, client: &mut Client, interval: u64) {
+    for _ in 0..amount {
+        client.tick();
+        std::thread::sleep(std::time::Duration::from_millis(interval));
+    }
+}
+
+#[allow(dead_code)]
+pub fn update_server_times(amount: usize, server: &mut Server, interval: u64) {
+    for _ in 0..amount {
+        server.tick();
+        std::thread::sleep(std::time::Duration::from_millis(interval));
+    }
+}
+
+#[allow(dead_code)]
+pub fn update_times(amount: usize, client: &mut Client, server: &mut Server, interval: u64) {
+    for _ in 0..amount {
+        client.tick();
+        server.tick();
+        std::thread::sleep(std::time::Duration::from_millis(interval));
+    }
 }

@@ -8,6 +8,7 @@ fn main() {
     // 创建 KCP 服务器
     let (mut server, s_rx) = Server::new(config, "0.0.0.0:3100".to_string()).unwrap();
 
+
     loop {
         if let Ok(callback) = s_rx.try_recv() {
             println!("{:?}", callback);

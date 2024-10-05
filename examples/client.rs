@@ -1,3 +1,4 @@
+use std::process::exit;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
@@ -28,6 +29,7 @@ fn main() {
                 }
                 CallbackType::OnDisconnected => {
                     println!("Client OnDisconnected {}", cb.connection_id);
+                    exit(0);
                 }
                 CallbackType::OnError => {
                     println!("Client OnError {:?} {}", cb.connection_id, cb.error_message);

@@ -300,7 +300,7 @@ impl Kcp2KConnection {
         // raw send
         self.raw_send(&buffer)
     }
-    pub fn tick_incoming(&mut self) {
+    pub fn tick_incoming(&self) {
         // 获取经过的时间
         let elapsed_time = self.kcp_peer.watch.elapsed();
         // 根据状态处理不同的逻辑
@@ -310,7 +310,7 @@ impl Kcp2KConnection {
             Kcp2KPeerState::Disconnected => {}
         }
     }
-    pub fn tick_outgoing(&mut self) {
+    pub fn tick_outgoing(&self) {
         match self.kcp_peer.state.get() {
             Kcp2KPeerState::Connected | Kcp2KPeerState::Authenticated => {
                 if let Ok(mut kcp) = self.kcp_peer.kcp.write() {

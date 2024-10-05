@@ -96,7 +96,7 @@ impl Server {
             self.handle_data(&sock_addr, data);
         }
 
-        for mut connection in self.connections.iter_mut() {
+        for connection in self.connections.iter() {
             connection.tick_incoming();
         }
 
@@ -108,7 +108,7 @@ impl Server {
         }
     }
     pub fn tick_outgoing(&self) {
-        for mut connection in self.connections.iter_mut() {
+        for connection in self.connections.iter() {
             connection.tick_outgoing();
         }
     }

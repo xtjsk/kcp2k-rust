@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use crate::common;
 use crate::error_code::ErrorCode;
 use crate::kcp2k_callback::Callback;
@@ -17,7 +18,7 @@ use tklog::info;
 pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
-    connections: HashMap<u64, Kcp2KConnection>,
+    connections: HashMap<u64, RefCell<Kcp2KConnection>>,
     removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
     callback_tx: Arc<mpsc::Sender<Callback>>,
 }
@@ -47,9 +48,9 @@ impl Server {
             Err(_) => Err(Error::from_raw_os_error(0))
         }
     }
-    pub fn send(&mut self, connection_id: u64, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
-        if let Some(connection) = self.connections.get_mut(&connection_id) {
-            connection.send_data(data, channel)
+    pub fn send(&self, connection_id: u64, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
+        if let Some(connection) = self.connections.get(&connection_id) {
+            connection.borrow_mut().send_data(data, channel)
         } else {
             Err(ErrorCode::ConnectionNotFound)
         }
@@ -68,8 +69,8 @@ impl Server {
         // 生成连接 ID
         let connection_id = common::connection_hash(sock_addr);
         // 如果连接存在，则处理数据
-        if let Some(connection) = self.connections.get_mut(&connection_id) {
-            let _ = connection.raw_input(data);
+        if let Some(connection) = self.connections.get(&connection_id) {
+            let _ = connection.borrow_mut().raw_input(data);
         } else { // 如果连接不存在，则创建连接
             self.create_connection(connection_id, sock_addr.clone());
         }
@@ -85,7 +86,7 @@ impl Server {
             Arc::new(Kcp2KMode::Server),
             Arc::clone(&self.callback_tx),
         );
-        self.connections.insert(connection_id, kcp_server_connection);
+        self.connections.insert(connection_id, RefCell::from(kcp_server_connection));
     }
     pub fn tick(&mut self) {
         self.tick_incoming();
@@ -96,8 +97,8 @@ impl Server {
             self.handle_data(&sock_addr, data);
         }
 
-        for connection in self.connections.values_mut() {
-            connection.tick_incoming();
+        for connection in self.connections.values() {
+            connection.borrow_mut().tick_incoming();
         }
 
 
@@ -107,15 +108,15 @@ impl Server {
             }
         }
     }
-    pub fn tick_outgoing(&mut self) {
-        for connection in self.connections.values_mut() {
-            connection.tick_outgoing();
+    pub fn tick_outgoing(&self) {
+        for connection in self.connections.values() {
+            connection.borrow_mut().tick_outgoing();
         }
     }
-    pub fn get_connection(&self, connection_id: u64) -> Option<&Kcp2KConnection> {
-        self.connections.get(&connection_id)
+    pub fn get_connection(&self, connection_id: u64) -> Option<Kcp2KConnection> {
+        self.connections.get(&connection_id).map(|c| c.borrow().clone())
     }
-    pub fn get_connections(&self) -> &HashMap<u64, Kcp2KConnection> {
+    pub fn get_connections(&self) -> &HashMap<u64, RefCell<Kcp2KConnection>> {
         &self.connections
     }
 }

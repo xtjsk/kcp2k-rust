@@ -1,4 +1,4 @@
-use kcp2k_rust::kcp2k_callback::ServerCallbackType;
+use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
@@ -17,19 +17,19 @@ fn main() {
         // 客户端接收
         if let Ok(cb) = c_rx.try_recv() {
             match cb.callback_type {
-                ServerCallbackType::OnConnected => {
+                CallbackType::OnConnected => {
                     println!("Client OnConnected {}", cb.connection_id);
                 }
-                ServerCallbackType::OnData => {
+                CallbackType::OnData => {
                     println!("Client received {:?} on channel {:?}", cb.data, cb.channel);
                     if let Err(e) = client.send(vec![3, 4], Kcp2KChannel::Unreliable){
                         println!("Client send error {:?}", e);
                     }
                 }
-                ServerCallbackType::OnDisconnected => {
+                CallbackType::OnDisconnected => {
                     println!("Client OnDisconnected {}", cb.connection_id);
                 }
-                ServerCallbackType::OnError => {
+                CallbackType::OnError => {
                     println!("Client OnError {:?} {}", cb.connection_id, cb.error_message);
                 }
             }

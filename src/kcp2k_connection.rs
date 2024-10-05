@@ -1,6 +1,6 @@
 use crate::common::Kcp2KMode;
 use crate::error_code::ErrorCode;
-use crate::kcp2k_callback::{ServerCallback, ServerCallbackType};
+use crate::kcp2k_callback::{Callback, CallbackType};
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_config::PING_INTERVAL;
@@ -18,13 +18,13 @@ pub struct Kcp2KConnection {
     removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
-    callback_tx: Arc<mpsc::Sender<ServerCallback>>,
+    callback_tx: Arc<mpsc::Sender<Callback>>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
 
 impl Kcp2KConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<RwLock<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<ServerCallback>>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<RwLock<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<Callback>>) -> Self {
         let mut kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
             removed_connections,
@@ -49,8 +49,8 @@ impl Kcp2KConnection {
         self.connection_id = connection_id;
     }
     fn on_connected(&mut self) {
-        let _ = self.callback_tx.send(ServerCallback {
-            callback_type: ServerCallbackType::OnConnected,
+        let _ = self.callback_tx.send(Callback {
+            callback_type: CallbackType::OnConnected,
             connection_id: self.connection_id,
             ..Default::default()
         });
@@ -61,8 +61,8 @@ impl Kcp2KConnection {
         self.on_connected()
     }
     fn on_data(&mut self, data: &[u8], kcp2k_channel: Kcp2KChannel) {
-        let _ = self.callback_tx.send(ServerCallback {
-            callback_type: ServerCallbackType::OnData,
+        let _ = self.callback_tx.send(Callback {
+            callback_type: CallbackType::OnData,
             data: data.to_vec(),
             channel: kcp2k_channel,
             connection_id: self.connection_id,
@@ -81,15 +81,15 @@ impl Kcp2KConnection {
         // 添加到移除列表
         self.removed_connections.write().unwrap().push(self.connection_id);
         // 回调
-        let _ = self.callback_tx.send(ServerCallback {
-            callback_type: ServerCallbackType::OnDisconnected,
+        let _ = self.callback_tx.send(Callback {
+            callback_type: CallbackType::OnDisconnected,
             connection_id: self.connection_id,
             ..Default::default()
         });
     }
     fn on_error(&mut self, error_code: ErrorCode, error_message: String) {
-        let _ = self.callback_tx.send(ServerCallback {
-            callback_type: ServerCallbackType::OnError,
+        let _ = self.callback_tx.send(Callback {
+            callback_type: CallbackType::OnError,
             connection_id: self.connection_id,
             error_code,
             error_message,

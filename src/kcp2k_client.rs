@@ -1,7 +1,7 @@
 use crate::common;
 use crate::common::Kcp2KMode;
 use crate::error_code::ErrorCode;
-use crate::kcp2k_callback::ServerCallback;
+use crate::kcp2k_callback::Callback;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
@@ -21,18 +21,18 @@ pub struct Client {
     socket: Arc<Socket>, // socket
     connections: HashMap<u64, Kcp2KConnection>,
     removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
-    callback_tx: Arc<mpsc::Sender<ServerCallback>>,
+    callback_tx: Arc<mpsc::Sender<Callback>>,
     client_model_default_connection_id: u64,
 }
 
 impl Client {
-    pub fn new(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<ServerCallback>), Error> {
+    pub fn new(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
         let address: SocketAddr = addr.parse().unwrap();
         let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
         common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Client))?;
         socket.set_nonblocking(true)?;
         socket.connect(&address.into())?;
-        let (callback_tx, callback_rx) = mpsc::channel::<ServerCallback>();
+        let (callback_tx, callback_rx) = mpsc::channel::<Callback>();
         let mut instance = Client {
             config: Arc::new(config),
             socket: Arc::new(socket),

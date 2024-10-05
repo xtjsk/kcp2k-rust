@@ -9,7 +9,7 @@ fn main() {
     let config = Kcp2KConfig::default();
 
     // 创建 KCP 客户端
-    let (mut client, c_rx) = Client::new(config, "127.0.0.1:3100".to_string()).unwrap();
+    let (client, c_rx) = Client::new(config, "127.0.0.1:3100".to_string()).unwrap();
 
     loop {
         // 客户端处理

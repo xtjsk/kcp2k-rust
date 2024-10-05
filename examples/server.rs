@@ -8,7 +8,7 @@ fn main() {
     let config = Kcp2KConfig::default();
 
     // 创建 KCP 服务器
-    let (mut server, s_rx) = Server::new(config, "0.0.0.0:3100".to_string()).unwrap();
+    let (server, s_rx) = Server::new(config, "0.0.0.0:3100".to_string()).unwrap();
 
     loop {
         // 服务器处理

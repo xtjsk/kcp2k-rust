@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use crate::common;
 use crate::error_code::ErrorCode;
 use crate::kcp2k_callback::Callback;
@@ -8,17 +7,17 @@ use crate::kcp2k_connection::Kcp2KConnection;
 use bytes::Bytes;
 use common::Kcp2KMode;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use std::collections::HashMap;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::{mpsc, Arc, RwLock};
+use dashmap::DashMap;
 use tklog::info;
 
 pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
-    connections: HashMap<u64, RefCell<Kcp2KConnection>>,
+    connections: DashMap<u64, Kcp2KConnection>,
     removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
     callback_tx: Arc<mpsc::Sender<Callback>>,
 }
@@ -35,7 +34,7 @@ impl Server {
         let instance = Server {
             config: Arc::new(config),
             socket: Arc::new(socket),
-            connections: HashMap::new(),
+            connections: DashMap::new(),
             removed_connections: Arc::new(RwLock::new(Vec::new())),
             callback_tx: Arc::new(callback_tx),
         };
@@ -49,8 +48,8 @@ impl Server {
         }
     }
     pub fn send(&self, connection_id: u64, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
-        if let Some(connection) = self.connections.get(&connection_id) {
-            connection.borrow_mut().send_data(data, channel)
+        if let Some(mut connection) = self.connections.get_mut(&connection_id) {
+            connection.send_data(data, channel)
         } else {
             Err(ErrorCode::ConnectionNotFound)
         }
@@ -65,17 +64,17 @@ impl Server {
             Err(_) => None
         }
     }
-    fn handle_data(&mut self, sock_addr: &SockAddr, data: Bytes) {
+    fn handle_data(&self, sock_addr: &SockAddr, data: Bytes) {
         // 生成连接 ID
         let connection_id = common::connection_hash(sock_addr);
         // 如果连接存在，则处理数据
-        if let Some(connection) = self.connections.get(&connection_id) {
-            let _ = connection.borrow_mut().raw_input(data);
+        if let Some(mut connection) = self.connections.get_mut(&connection_id) {
+            let _ = connection.raw_input(data);
         } else { // 如果连接不存在，则创建连接
             self.create_connection(connection_id, sock_addr.clone());
         }
     }
-    fn create_connection(&mut self, connection_id: u64, sock_addr: SockAddr) {
+    fn create_connection(&self, connection_id: u64, sock_addr: SockAddr) {
         let kcp_server_connection = Kcp2KConnection::new(
             Arc::clone(&self.config),
             Arc::new(common::generate_cookie()),
@@ -86,19 +85,19 @@ impl Server {
             Arc::new(Kcp2KMode::Server),
             Arc::clone(&self.callback_tx),
         );
-        self.connections.insert(connection_id, RefCell::from(kcp_server_connection));
+        self.connections.insert(connection_id, kcp_server_connection);
     }
-    pub fn tick(&mut self) {
+    pub fn tick(&self) {
         self.tick_incoming();
         self.tick_outgoing();
     }
-    pub fn tick_incoming(&mut self) {
+    pub fn tick_incoming(&self) {
         while let Some((sock_addr, data)) = self.raw_receive_from() {
             self.handle_data(&sock_addr, data);
         }
 
-        for connection in self.connections.values() {
-            connection.borrow_mut().tick_incoming();
+        for mut connection in self.connections.iter_mut() {
+            connection.tick_incoming();
         }
 
 
@@ -109,14 +108,18 @@ impl Server {
         }
     }
     pub fn tick_outgoing(&self) {
-        for connection in self.connections.values() {
-            connection.borrow_mut().tick_outgoing();
+        for mut connection in self.connections.iter_mut() {
+            connection.tick_outgoing();
         }
     }
     pub fn get_connection(&self, connection_id: u64) -> Option<Kcp2KConnection> {
-        self.connections.get(&connection_id).map(|c| c.borrow().clone())
+        if let Some(connection) = self.connections.get(&connection_id) {
+            Some(connection.clone())
+        } else {
+            None
+        }
     }
-    pub fn get_connections(&self) -> &HashMap<u64, RefCell<Kcp2KConnection>> {
-        &self.connections
+    pub fn get_connections(&self) ->DashMap<u64, Kcp2KConnection> {
+        self.connections.clone()
     }
 }

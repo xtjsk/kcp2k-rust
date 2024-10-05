@@ -41,7 +41,7 @@ impl Server {
         info!(format!("[KCP2K] Server bind on: {:?}", instance.socket.local_addr()?.as_socket().unwrap()));
         Ok((instance, callback_rx))
     }
-    pub fn stop(&mut self) -> Result<(), Error> {
+    pub fn stop(&self) -> Result<(), Error> {
         match self.socket.shutdown(std::net::Shutdown::Both) {
             Ok(_) => Ok(()),
             Err(_) => Err(Error::from_raw_os_error(0))
@@ -54,7 +54,7 @@ impl Server {
             Err(ErrorCode::ConnectionNotFound)
         }
     }
-    fn raw_receive_from(&mut self) -> Option<(SockAddr, Bytes)> {
+    fn raw_receive_from(&self) -> Option<(SockAddr, Bytes)> {
         let mut buf: [MaybeUninit<u8>; 1024] = unsafe { MaybeUninit::uninit().assume_init() };
         match self.socket.recv_from(&mut buf) {
             Ok((size, sock_addr)) => {
@@ -100,8 +100,11 @@ impl Server {
             connection.tick_incoming();
         }
 
-        while let Some(connection_id) = self.removed_connections.write().unwrap().pop() {
-            drop(self.connections.remove(&connection_id));
+
+        if let Ok(mut removed_connections) = self.removed_connections.write() {
+            while let Some(connection_id) = removed_connections.pop() {
+                drop(self.connections.remove(&connection_id));
+            }
         }
     }
     pub fn tick_outgoing(&mut self) {

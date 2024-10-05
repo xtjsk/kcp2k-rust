@@ -1,3 +1,4 @@
+use std::thread::sleep;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
@@ -64,6 +65,7 @@ fn main() {
                 }
             }
         }
+        sleep(std::time::Duration::from_millis(20));
     }
 }
 

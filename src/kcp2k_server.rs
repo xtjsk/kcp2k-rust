@@ -72,7 +72,6 @@ impl Server {
             let _ = connection.raw_input(data);
         } else { // 如果连接不存在，则创建连接
             self.create_connection(connection_id, sock_addr.clone());
-            self.handle_data(sock_addr, data);
         }
     }
     fn create_connection(&mut self, connection_id: u64, sock_addr: SockAddr) {

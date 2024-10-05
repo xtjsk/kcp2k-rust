@@ -5,6 +5,7 @@ use crate::kcp2k_callback::ServerCallback;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
+use crate::kcp2k_header::Kcp2KHeaderReliable;
 use crate::kcp2k_peer::Kcp2KPeer;
 use bytes::Bytes;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
@@ -92,19 +93,15 @@ impl Client {
         // 如果连接存在，则处理数据
         if let Some(connection) = self.connections.get_mut(&connection_id) {
             let _ = connection.raw_input(data);
-        } else { // 如果是客户端模式
-            let mut cookie = common::generate_cookie();
-            if data.len() > 4 {
-                cookie = Bytes::copy_from_slice(&data[1..5]);
-                debug!( format!("[KCP2K] Client received handshake with cookie={:?}", cookie.to_vec()));
-            }
+        } else if data.len() > 28 && data[29] == Kcp2KHeaderReliable::Hello.to_u8() { // 如果是客户端模式
+            let cookie = Bytes::copy_from_slice(&data[1..5]);
+            debug!( format!("[KCP2K] Client received handshake with cookie={:?}", cookie.to_vec()));
             match self.connections.remove(&self.client_model_default_connection_id) {
                 Some(mut conn) => {
                     self.client_model_default_connection_id = connection_id;
                     conn.set_connection_id(self.client_model_default_connection_id);
                     conn.set_kcp_peer(Kcp2KPeer::new(Arc::clone(&self.config), Arc::new(cookie), Arc::clone(&self.socket), Arc::new(sock_addr.clone())));
                     self.connections.insert(self.client_model_default_connection_id, conn);
-                    self.handle_data(sock_addr, data);
                 }
                 None => {}
             }

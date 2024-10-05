@@ -1,4 +1,4 @@
-use kcp2k_rust::common::update_client_times;
+use kcp2k_rust::kcp2k_callback::ServerCallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
@@ -11,14 +11,28 @@ fn main() {
     // 创建 KCP 客户端
     let (mut client, c_rx) = Client::new(config, "127.0.0.1:3100".to_string()).unwrap();
 
-    // Client Update
-    update_client_times(10, &mut client, config.interval);
-
     loop {
+        // 客户端处理
         client.tick();
-        if let Err(e) = client.send(vec![1, 2], Kcp2KChannel::Reliable) {
-            println!("client send failed: {:?}", e);
-            break;
+        // 客户端接收
+        if let Ok(cb) = c_rx.try_recv() {
+            match cb.callback_type {
+                ServerCallbackType::OnConnected => {
+                    println!("Client OnConnected {}", cb.connection_id);
+                }
+                ServerCallbackType::OnData => {
+                    println!("Client received {:?} on channel {:?}", cb.data, cb.channel);
+                    if let Err(e) = client.send(vec![3, 4], Kcp2KChannel::Unreliable){
+                        println!("Client send error {:?}", e);
+                    }
+                }
+                ServerCallbackType::OnDisconnected => {
+                    println!("Client OnDisconnected {}", cb.connection_id);
+                }
+                ServerCallbackType::OnError => {
+                    println!("Client OnError {:?} {}", cb.connection_id, cb.error_message);
+                }
+            }
         }
     }
 }

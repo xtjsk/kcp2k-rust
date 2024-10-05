@@ -56,8 +56,8 @@ impl Kcp2KConnection {
         });
     }
     fn on_authenticated(&mut self) {
-        self.kcp_peer.state = Kcp2KPeerState::Authenticated;
         let _ = self.send_hello();
+        self.kcp_peer.state = Kcp2KPeerState::Authenticated;
         self.on_connected()
     }
     fn on_data(&mut self, data: &[u8], kcp2k_channel: Kcp2KChannel) {
@@ -108,31 +108,28 @@ impl Kcp2KConnection {
             return Err(ErrorCode::InvalidReceive);
         }
 
-        // 类型
-        let channel = segment[0];
-
         // cookie
-        let cookie = &segment[1..5];
+        let cookie = Arc::from(Bytes::copy_from_slice(&segment[1..5]));
 
         // 如果连接已经通过验证，但是收到了带有不同 cookie 的消息，那么这可能是由于客户端的 Hello 消息被多次传输，或者攻击者尝试进行 UDP 欺骗。
         if self.kcp_peer.state == Kcp2KPeerState::Authenticated {
-            if cookie != self.kcp_peer.cookie.to_vec() {
+            if cookie != self.kcp_peer.cookie {
                 self.on_error(ErrorCode::InvalidReceive, format!("{}: Dropped message with invalid cookie: {:?} from {:?} expected: {:?} state: {:?}. This can happen if the client's Hello message was transmitted multiple times, or if an attacker attempted UDP spoofing.", std::any::type_name::<Self>(), cookie, self.client_sock_addr.clone(), self.kcp_peer.cookie.to_vec(), self.kcp_peer.state));
                 return Err(ErrorCode::InvalidReceive);
             }
         }
 
         // 消息
-        let message = Bytes::copy_from_slice(&segment[5..]);
+        let kcp_data = Bytes::copy_from_slice(&segment[5..]);
 
         self.kcp_peer.last_recv_time = self.kcp_peer.watch.elapsed();
 
         // 根据通道类型处理消息
-        match Kcp2KChannel::from(channel) {
-            Kcp2KChannel::Reliable => self.raw_input_reliable(message),
-            Kcp2KChannel::Unreliable => self.raw_input_unreliable(message),
+        match Kcp2KChannel::from(segment[0]) {
+            Kcp2KChannel::Reliable => self.raw_input_reliable(kcp_data),
+            Kcp2KChannel::Unreliable => self.raw_input_unreliable(kcp_data),
             _ => {
-                self.on_error(ErrorCode::Unexpected, format!("{}: Received message with unexpected channel: {:?}. Disconnecting the connection.", std::any::type_name::<Self>(), channel));
+                self.on_error(ErrorCode::Unexpected, format!("{}: Received message with unexpected channel. Disconnecting the connection.", std::any::type_name::<Self>()));
                 Err(ErrorCode::Unexpected)
             }
         }
@@ -308,7 +305,7 @@ impl Kcp2KConnection {
         self.handle_timeout(elapsed_time);
         self.handle_dead_link();
 
-        while let Some((header, _)) = self.receive_next_reliable() {
+        if let Some((header, _)) = self.receive_next_reliable() {
             match header {
                 Kcp2KHeaderReliable::Hello => {
                     let _ = self.on_authenticated();
@@ -327,7 +324,7 @@ impl Kcp2KConnection {
         self.handle_timeout(elapsed_time);
         self.handle_dead_link();
 
-        while let Some((header, data)) = self.receive_next_reliable() {
+        if let Some((header, data)) = self.receive_next_reliable() {
             match header {
                 Kcp2KHeaderReliable::Hello => {
                     let _ = self.on_error(ErrorCode::InvalidReceive, "Received invalid header while Authenticated. Disconnecting the connection.".to_string());

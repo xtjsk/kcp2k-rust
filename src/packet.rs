@@ -1,12 +1,14 @@
-#[derive(Debug, Clone)]
+use bytes::Bytes;
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Packet {
     pub conv: u64,
     pub cmd: u8,
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 
 impl Packet {
-    pub fn new(conv: u64, cmd: u8, data: Vec<u8>) -> Self {
+    pub fn new(conv: u64, cmd: u8, data: Bytes) -> Self {
         Packet { conv, cmd, data }
     }
 
@@ -18,9 +20,9 @@ impl Packet {
         buffer
     }
 
-    pub fn deserialize(buffer: &[u8]) -> (u64, u8, Vec<u8>) {
+    pub fn deserialize(buffer: Bytes) -> (u64, u8, Bytes) {
         if buffer.len() < 9 {
-            return (0, 0, Vec::new());
+            return (0, 0, Bytes::new());
         }
 
         // 将前 8 个字节转换为 u64
@@ -30,17 +32,17 @@ impl Packet {
         let cmd = buffer[8];
 
         // 剩下的字节是 data
-        let data = buffer[9..].to_vec();
+        let data = buffer.slice(9..);
 
         (conv, cmd, data)
     }
 
-    pub fn deserialize2struct(buffer: &[u8]) -> Packet {
+    pub fn deserialize2struct(buffer: Bytes) -> Packet {
         let (conv, cmd, data) = Packet::deserialize(buffer);
         Packet { conv, cmd, data }
     }
 
-    pub fn vec_u8_to_string(data: &Vec<u8>) -> String {
-        String::from_utf8_lossy(data).to_string()
+    pub fn vec_u8_to_string(data: Bytes) -> String {
+        String::from_utf8_lossy(data.iter().as_slice()).to_string()
     }
 }

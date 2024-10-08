@@ -1,5 +1,4 @@
-use crate::kcp2k_client::Client;
-use crate::kcp2k_server::Server;
+use crate::kcp2k::Kcp2K;
 use bytes::Bytes;
 use rand::TryRngCore;
 use socket2::{SockAddr, Socket};
@@ -9,7 +8,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tklog::info;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Kcp2KMode {
     Client,
     Server,
@@ -67,7 +66,7 @@ pub fn get_current_timestamp_millis() -> u128 {
 }
 
 #[allow(dead_code)]
-pub fn update_client_times(amount: usize, client: &mut Client, interval: u64) {
+pub fn update_client_times(amount: usize, client: &mut Kcp2K, interval: u64) {
     for _ in 0..amount {
         client.tick();
         std::thread::sleep(std::time::Duration::from_millis(interval));
@@ -75,7 +74,7 @@ pub fn update_client_times(amount: usize, client: &mut Client, interval: u64) {
 }
 
 #[allow(dead_code)]
-pub fn update_server_times(amount: usize, server: &mut Server, interval: u64) {
+pub fn update_server_times(amount: usize, server: &mut Kcp2K, interval: u64) {
     for _ in 0..amount {
         server.tick();
         std::thread::sleep(std::time::Duration::from_millis(interval));
@@ -83,7 +82,7 @@ pub fn update_server_times(amount: usize, server: &mut Server, interval: u64) {
 }
 
 #[allow(dead_code)]
-pub fn update_times(amount: usize, client: &mut Client, server: &mut Server, interval: u64) {
+pub fn update_times(amount: usize, client: &mut Kcp2K, server: &mut Kcp2K, interval: u64) {
     for _ in 0..amount {
         client.tick();
         server.tick();

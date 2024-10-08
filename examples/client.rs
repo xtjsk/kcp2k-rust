@@ -1,17 +1,16 @@
 use bytes::Bytes;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
-use kcp2k_rust::kcp2k_client::Client;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
 use std::process::exit;
-
+use kcp2k_rust::kcp2k::Kcp2K;
 
 fn main() {
     // 创建 KCP 客户端配置
     let config = Kcp2KConfig::default();
 
     // 创建 KCP 客户端
-    let (client, c_rx) = Client::new(config, "127.0.0.1:3100".to_string()).unwrap();
+    let (client, c_rx) = Kcp2K::new_client(config, "127.0.0.1:3100".to_string()).unwrap();
 
     loop {
         // 客户端处理
@@ -24,7 +23,7 @@ fn main() {
                 }
                 CallbackType::OnData => {
                     println!("Client received {:?} on channel {:?}", cb.data, cb.channel);
-                    if let Err(e) = client.send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable) {
+                    if let Err(e) = client.c_send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable) {
                         println!("Client send error {:?}", e);
                     }
                 }

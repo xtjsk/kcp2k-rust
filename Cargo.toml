@@ -8,7 +8,6 @@ kcp = "0.5.3"
 bytes = "1.7.1"
 serde = { version = "1.0.204", features = ["derive"] }
 rand = "0.9.0-alpha.2"
-log = "0.4.22"
 socket2 = "0.5.7"
 tklog = "0.2.0"
 dashmap = "6.1.0"

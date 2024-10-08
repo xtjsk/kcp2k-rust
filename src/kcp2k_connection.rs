@@ -61,10 +61,10 @@ impl Kcp2KConnection {
         self.kcp_peer.state.replace(Kcp2KPeerState::Authenticated);
         self.on_connected()
     }
-    fn on_data(&self, data: &[u8], kcp2k_channel: Kcp2KChannel) {
+    fn on_data(&self, data: Bytes, kcp2k_channel: Kcp2KChannel) {
         let _ = self.callback_tx.send(Callback {
             callback_type: CallbackType::OnData,
-            data: Bytes::copy_from_slice(data),
+            data,
             channel: kcp2k_channel,
             connection_id: self.connection_id,
             ..Default::default()
@@ -225,14 +225,14 @@ impl Kcp2KConnection {
         };
 
         // 提取数据
-        let data = &data[1..];
+        let data = Bytes::copy_from_slice(&data[1..]);
 
         // 根据头部类型处理消息
         match header {
             Kcp2KHeaderUnreliable::Data => {
                 match self.kcp_peer.state.get() {
                     Kcp2KPeerState::Authenticated => {
-                        self.on_data(&data, Kcp2KChannel::Unreliable);
+                        self.on_data(data, Kcp2KChannel::Unreliable);
                         Ok(())
                     }
                     _ => {
@@ -353,7 +353,7 @@ impl Kcp2KConnection {
                         let _ = self.on_error(ErrorCode::InvalidReceive, "Received empty Data message while Authenticated. Disconnecting the connection.".to_string());
                         let _ = self.on_disconnected();
                     } else {
-                        let _ = self.on_data(&data, Kcp2KChannel::Reliable);
+                        let _ = self.on_data(data, Kcp2KChannel::Reliable);
                     }
                 }
                 Kcp2KHeaderReliable::Ping => {}

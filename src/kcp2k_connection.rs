@@ -3,7 +3,6 @@ use crate::error_code::ErrorCode;
 use crate::kcp2k_callback::{Callback, CallbackType};
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
-use crate::kcp2k_config::PING_INTERVAL;
 use crate::kcp2k_header::{Kcp2KHeaderReliable, Kcp2KHeaderUnreliable};
 use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_state::Kcp2KPeerState;
@@ -403,7 +402,7 @@ impl Kcp2KConnection {
     }
     // 处理 ping
     fn handle_ping(&self, elapsed_time: Duration) {
-        if elapsed_time >= self.kcp_peer.last_send_ping_time.get() + Duration::from_millis(PING_INTERVAL) {
+        if elapsed_time >= self.kcp_peer.last_send_ping_time.get() + Duration::from_millis(Kcp2KConfig::PING_INTERVAL) {
             self.kcp_peer.last_send_ping_time.replace(elapsed_time);
             let _ = self.send_ping();
         }

@@ -1,14 +1,5 @@
-// 引入 Rust 标准库中的序列化相关的 trait
-use serde::{Deserialize, Serialize};
-
-pub const PING_INTERVAL: u64 = 1000;
-pub const CHANNEL_HEADER_SIZE: usize = 1;
-pub const COOKIE_HEADER_SIZE: usize = 4;
-pub const METADATA_SIZE_RELIABLE: usize = CHANNEL_HEADER_SIZE + COOKIE_HEADER_SIZE;
-pub const METADATA_SIZE_UNRELIABLE: usize = CHANNEL_HEADER_SIZE + COOKIE_HEADER_SIZE;
-
 // 定义 KcpConfig 结构体，用于配置 KCP 服务器
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Kcp2KConfig {
     // 使用 IPv6 和 IPv4 的双模式，不是所有平台都支持
     pub dual_mode: bool,
@@ -33,6 +24,14 @@ pub struct Kcp2KConfig {
     // 最大重传次数，直到连接被认为是断开的
     pub max_retransmits: u32,
     pub is_reliable_ping: bool,
+}
+
+impl Kcp2KConfig {
+    pub const PING_INTERVAL: u64 = 1000;
+    pub const CHANNEL_HEADER_SIZE: usize = 1;
+    pub const COOKIE_HEADER_SIZE: usize = 4;
+    pub const METADATA_SIZE_RELIABLE: usize = Self::CHANNEL_HEADER_SIZE + Self::COOKIE_HEADER_SIZE;
+    pub const METADATA_SIZE_UNRELIABLE: usize = Self::CHANNEL_HEADER_SIZE + Self::COOKIE_HEADER_SIZE;
 }
 
 impl Default for Kcp2KConfig {

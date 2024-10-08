@@ -2,7 +2,6 @@ pub mod kcp2k_callback;
 pub mod kcp2k_config;
 pub mod error_code;
 pub mod kcp2k_channel;
-pub mod packet;
 pub mod common;
 mod kcp2k_header;
 mod kcp2k_peer;

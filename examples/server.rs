@@ -24,7 +24,7 @@ fn main() {
                     }
                 }
                 CallbackType::OnData => {
-                    println!("Server received {:?} on channel {:?}", cb.data, cb.channel);
+                    println!("Server received {:?} on channel {:?}", cb.data.as_ref(), cb.channel);
                     if let Err(e) = server.s_send(cb.connection_id, Bytes::from(vec![1, 2]), Kcp2KChannel::Reliable) {
                         println!("Server send error {:?}", e);
                     }

@@ -1,6 +1,7 @@
 use crate::error_code::ErrorCode;
 use crate::kcp2k_channel::Kcp2KChannel;
 use std::fmt::{Debug, Formatter};
+use bytes::Bytes;
 
 #[derive(Debug)]
 pub enum CallbackType {
@@ -14,7 +15,7 @@ pub enum CallbackType {
 pub struct Callback {
     pub callback_type: CallbackType,
     pub connection_id: u64,
-    pub data: Vec<u8>,
+    pub data: Bytes,
     pub channel: Kcp2KChannel,
     pub error_code: ErrorCode,
     pub error_message: String,
@@ -42,7 +43,7 @@ impl Default for Callback {
     fn default() -> Self {
         Self {
             callback_type: CallbackType::OnError,
-            data: vec![],
+            data: Bytes::new(),
             connection_id: 0,
             channel: Kcp2KChannel::None,
             error_code: ErrorCode::None,

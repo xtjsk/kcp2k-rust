@@ -1,9 +1,9 @@
 use bytes::Bytes;
+use kcp2k_rust::kcp2k::Kcp2K;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
 use std::process::exit;
-use kcp2k_rust::kcp2k::Kcp2K;
 
 fn main() {
     // 创建 KCP 客户端配置
@@ -22,7 +22,7 @@ fn main() {
                     println!("Client OnConnected {}", cb.connection_id);
                 }
                 CallbackType::OnData => {
-                    println!("Client received {:?} on channel {:?}", cb.data, cb.channel);
+                    println!("Client received {:?} on channel {:?}", cb.data.as_ref(), cb.channel);
                     if let Err(e) = client.c_send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable) {
                         println!("Client send error {:?}", e);
                     }

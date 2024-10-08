@@ -64,7 +64,7 @@ impl Kcp2KConnection {
     fn on_data(&self, data: &[u8], kcp2k_channel: Kcp2KChannel) {
         let _ = self.callback_tx.send(Callback {
             callback_type: CallbackType::OnData,
-            data: data.to_vec(),
+            data: Bytes::copy_from_slice(data),
             channel: kcp2k_channel,
             connection_id: self.connection_id,
             ..Default::default()

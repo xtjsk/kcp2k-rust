@@ -6,22 +6,22 @@ use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_connection::Kcp2KConnection;
 use bytes::Bytes;
 use common::Kcp2KMode;
+use dashmap::DashMap;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
-use std::sync::{mpsc, Arc, RwLock};
-use dashmap::DashMap;
+use std::sync::{mpsc, Arc};
 use tklog::info;
 
 pub struct Server {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
-    connections: DashMap<u64, Kcp2KConnection>,
-    removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
+    connections: Arc<DashMap<u64, Kcp2KConnection>>,
     callback_tx: Arc<mpsc::Sender<Callback>>,
+    remove_connection_tx: Arc<mpsc::Sender<u64>>,
+    remove_connection_rx: Arc<mpsc::Receiver<u64>>,
 }
-
 
 impl Server {
     pub fn new(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
@@ -31,12 +31,14 @@ impl Server {
         socket.set_nonblocking(true)?;
         socket.bind(&socket_addr.into())?;
         let (callback_tx, callback_rx) = mpsc::channel::<Callback>();
+        let (remove_connection_tx, remove_connection_rx) = mpsc::channel::<u64>();
         let instance = Server {
             config: Arc::new(config),
             socket: Arc::new(socket),
-            connections: DashMap::new(),
-            removed_connections: Arc::new(RwLock::new(Vec::new())),
+            connections: Arc::new(DashMap::new()),
             callback_tx: Arc::new(callback_tx),
+            remove_connection_tx: Arc::new(remove_connection_tx),
+            remove_connection_rx: Arc::new(remove_connection_rx),
         };
         info!(format!("[KCP2K] Server bind on: {:?}", instance.socket.local_addr()?.as_socket().unwrap()));
         Ok((instance, callback_rx))
@@ -47,7 +49,7 @@ impl Server {
             Err(_) => Err(Error::from_raw_os_error(0))
         }
     }
-    pub fn send(&self, connection_id: u64, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
+    pub fn send(&self, connection_id: u64, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         if let Some(mut connection) = self.connections.get_mut(&connection_id) {
             connection.send_data(data, channel)
         } else {
@@ -81,9 +83,9 @@ impl Server {
             Arc::clone(&self.socket),
             connection_id,
             Arc::new(sock_addr),
-            Arc::clone(&self.removed_connections),
             Arc::new(Kcp2KMode::Server),
             Arc::clone(&self.callback_tx),
+            Arc::clone(&self.remove_connection_tx),
         );
         self.connections.insert(connection_id, kcp_server_connection);
     }
@@ -92,19 +94,16 @@ impl Server {
         self.tick_outgoing();
     }
     pub fn tick_incoming(&self) {
+        while let Ok(connection_id) = self.remove_connection_rx.try_recv() {
+            self.connections.remove(&connection_id);
+        }
+
         while let Some((sock_addr, data)) = self.raw_receive_from() {
             self.handle_data(&sock_addr, data);
         }
 
         for connection in self.connections.iter() {
             connection.tick_incoming();
-        }
-
-
-        if let Ok(mut removed_connections) = self.removed_connections.write() {
-            while let Some(connection_id) = removed_connections.pop() {
-                drop(self.connections.remove(&connection_id));
-            }
         }
     }
     pub fn tick_outgoing(&self) {
@@ -119,7 +118,7 @@ impl Server {
             None
         }
     }
-    pub fn get_connections(&self) ->DashMap<u64, Kcp2KConnection> {
-        self.connections.clone()
+    pub fn get_connections(&self) -> Arc<DashMap<u64, Kcp2KConnection>> {
+        Arc::clone(&self.connections)
     }
 }

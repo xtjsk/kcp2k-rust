@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
@@ -27,13 +28,13 @@ fn main() {
             match cb.callback_type {
                 CallbackType::OnConnected => {
                     println!("Server OnConnected {:?}", cb.connection_id);
-                    if let Err(e) = server.send(cb.connection_id, vec![1, 2], Kcp2KChannel::Reliable) {
+                    if let Err(e) = server.send(cb.connection_id, Bytes::from(vec![1, 2]), Kcp2KChannel::Reliable) {
                         println!("Server send error {:?}", e);
                     }
                 }
                 CallbackType::OnData => {
                     println!("Server received {:?} on channel {:?}", cb.data, cb.channel);
-                    if let Err(e) = server.send(cb.connection_id, vec![1, 2], Kcp2KChannel::Reliable) {
+                    if let Err(e) = server.send(cb.connection_id, Bytes::from(vec![1, 2]), Kcp2KChannel::Reliable) {
                         println!("Server send error {:?}", e);
                     }
                 }
@@ -53,7 +54,7 @@ fn main() {
                 }
                 CallbackType::OnData => {
                     println!("Client received {:?} on channel {:?}", cb.data, cb.channel);
-                    if let Err(e) = client.send(vec![3, 4], Kcp2KChannel::Unreliable) {
+                    if let Err(e) = client.send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable) {
                         println!("Client send error {:?}", e);
                     }
                 }

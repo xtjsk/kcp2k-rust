@@ -9,29 +9,29 @@ use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::{BufMut, Bytes, BytesMut};
 use socket2::{SockAddr, Socket};
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 // KcpServerConnection
 #[derive(Debug, Clone)]
 pub struct Kcp2KConnection {
     socket: Arc<Socket>,
-    removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
     callback_tx: Arc<mpsc::Sender<Callback>>,
+    remove_connection_tx: Arc<mpsc::Sender<u64>>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
 
 impl Kcp2KConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, removed_connections: Arc<RwLock<Vec<u64>>>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<Callback>>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<Callback>>, remove_connection_tx: Arc<mpsc::Sender<u64>>) -> Self {
         let kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
-            removed_connections,
             connection_id,
             client_sock_addr: Arc::clone(&client_sock_addr),
             callback_tx: Arc::clone(&callback_tx),
+            remove_connection_tx,
             kcp_peer: Kcp2KPeer::new(Arc::clone(&config), Arc::clone(&cookie), Arc::clone(&socket), Arc::clone(&client_sock_addr)),
             is_reliable_ping: config.is_reliable_ping,
         };
@@ -71,19 +71,16 @@ impl Kcp2KConnection {
         });
     }
     fn on_disconnected(&self) {
+        // 从连接列表中删除连接
+        let _ = self.remove_connection_tx.send(self.connection_id);
         // 如果连接已经断开，则不执行任何操作
         if self.kcp_peer.state.get() == Kcp2KPeerState::Disconnected {
             return;
         }
-
         // 发送断开消息
         self.send_disconnect();
         // 设置状态为断开
         self.kcp_peer.state.replace(Kcp2KPeerState::Disconnected);
-        // 添加到移除列表
-        if let Ok(mut removed_connections) = self.removed_connections.write() {
-            removed_connections.push(self.connection_id);
-        }
         // 回调
         let _ = self.callback_tx.send(Callback {
             callback_type: CallbackType::OnDisconnected,
@@ -251,7 +248,7 @@ impl Kcp2KConnection {
             Kcp2KHeaderUnreliable::Ping => Ok(())
         }
     }
-    fn send_reliable(&self, kcp2k_header_reliable: Kcp2KHeaderReliable, data: Vec<u8>) -> Result<(), ErrorCode> {
+    fn send_reliable(&self, kcp2k_header_reliable: Kcp2KHeaderReliable, data: Bytes) -> Result<(), ErrorCode> {
         // 创建一个缓冲区，用于存储消息内容
         let mut buffer = vec![];
 
@@ -280,7 +277,7 @@ impl Kcp2KConnection {
             Err(ErrorCode::SendError)
         }
     }
-    fn send_unreliable(&self, kcp2k_header_unreliable: Kcp2KHeaderUnreliable, data: Vec<u8>) -> Result<(), ErrorCode> {
+    fn send_unreliable(&self, kcp2k_header_unreliable: Kcp2KHeaderUnreliable, data: Bytes) -> Result<(), ErrorCode> {
         // 创建一个缓冲区，用于存储消息内容
         let mut buffer = vec![];
 
@@ -376,7 +373,7 @@ impl Kcp2KConnection {
         }
     }
     // 发送数据
-    pub fn send_data(&mut self, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
+    pub fn send_data(&mut self, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         // 如果数据为空，则返回错误
         if data.is_empty() {
             self.on_error(ErrorCode::InvalidSend, "send_data: tried sending empty message. This should never happen. Disconnecting.".to_string());
@@ -414,7 +411,7 @@ impl Kcp2KConnection {
     // 处理超时
     fn handle_timeout(&self, elapsed_time: Duration) {
         if elapsed_time > self.kcp_peer.last_recv_time.get() + self.kcp_peer.timeout_duration {
-            let _ = self.on_error(ErrorCode::Timeout, "to disconnected.".to_string());
+            let _ = self.on_error(ErrorCode::Timeout, "timeout to disconnected.".to_string());
             let _ = self.on_disconnected();
         }
     }
@@ -422,7 +419,7 @@ impl Kcp2KConnection {
     fn handle_dead_link(&self) {
         if let Ok(kcp) = self.kcp_peer.kcp.read() {
             if kcp.is_dead_link() {
-                let _ = self.on_error(ErrorCode::Timeout, "dead_link detected: a message was retransmitted times without ack. Disconnecting.".to_string());
+                let _ = self.on_error(ErrorCode::Timeout, "dead link to disconnecting.".to_string());
                 let _ = self.on_disconnected();
             }
         }

@@ -1,8 +1,9 @@
-use std::process::exit;
+use bytes::Bytes;
 use kcp2k_rust::kcp2k_callback::CallbackType;
 use kcp2k_rust::kcp2k_channel::Kcp2KChannel;
 use kcp2k_rust::kcp2k_client::Client;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
+use std::process::exit;
 
 
 fn main() {
@@ -23,7 +24,7 @@ fn main() {
                 }
                 CallbackType::OnData => {
                     println!("Client received {:?} on channel {:?}", cb.data, cb.channel);
-                    if let Err(e) = client.send(vec![3, 4], Kcp2KChannel::Unreliable){
+                    if let Err(e) = client.send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable) {
                         println!("Client send error {:?}", e);
                     }
                 }

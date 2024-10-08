@@ -8,22 +8,23 @@ use crate::kcp2k_connection::Kcp2KConnection;
 use crate::kcp2k_header::Kcp2KHeaderReliable;
 use crate::kcp2k_peer::Kcp2KPeer;
 use bytes::Bytes;
+use dashmap::DashMap;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
-use std::sync::{mpsc, Arc, RwLock};
 use std::sync::atomic::{AtomicU64, Ordering};
-use dashmap::DashMap;
+use std::sync::{mpsc, Arc};
 use tklog::{debug, info};
 
 pub struct Client {
     config: Arc<Kcp2KConfig>,  // 配置
     socket: Arc<Socket>, // socket
-    connections: DashMap<u64, Kcp2KConnection>,
-    removed_connections: Arc<RwLock<Vec<u64>>>, // removed_connections
+    connections: Arc<DashMap<u64, Kcp2KConnection>>,
     callback_tx: Arc<mpsc::Sender<Callback>>,
-    client_model_default_connection_id: AtomicU64
+    remove_connection_tx: Arc<mpsc::Sender<u64>>,
+    remove_connection_rx: Arc<mpsc::Receiver<u64>>,
+    client_model_default_connection_id: AtomicU64,
 }
 
 impl Client {
@@ -34,12 +35,14 @@ impl Client {
         socket.set_nonblocking(true)?;
         socket.connect(&address.into())?;
         let (callback_tx, callback_rx) = mpsc::channel::<Callback>();
-        let mut instance = Client {
+        let (remove_connection_tx, remove_connection_rx) = mpsc::channel::<u64>();
+        let instance = Client {
             config: Arc::new(config),
             socket: Arc::new(socket),
-            connections: DashMap::new(),
-            removed_connections: Arc::new(RwLock::new(Vec::new())),
+            connections: Arc::new(DashMap::new()),
             callback_tx: Arc::new(callback_tx),
+            remove_connection_tx: Arc::new(remove_connection_tx),
+            remove_connection_rx: Arc::new(remove_connection_rx),
             client_model_default_connection_id: AtomicU64::new(rand::random()),
         };
         instance.create_connection(instance.client_model_default_connection_id.load(Ordering::SeqCst), address.into());
@@ -51,7 +54,7 @@ impl Client {
         self.connections.remove(&self.client_model_default_connection_id.load(Ordering::SeqCst));
     }
 
-    pub fn send(&self, data: Vec<u8>, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
+    pub fn send(&self, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         if let Some(mut connection) = self.connections.get_mut(&self.client_model_default_connection_id.load(Ordering::SeqCst)) {
             connection.send_data(data, channel)
         } else {
@@ -75,16 +78,16 @@ impl Client {
             Err(_) => None
         }
     }
-    fn create_connection(&mut self, connection_id: u64, sock_addr: SockAddr) {
+    fn create_connection(&self, connection_id: u64, sock_addr: SockAddr) {
         let kcp_client_connection = Kcp2KConnection::new(
             Arc::clone(&self.config),
             Arc::new(common::generate_cookie()),
             Arc::clone(&self.socket),
             connection_id,
             Arc::new(sock_addr),
-            Arc::clone(&self.removed_connections),
             Arc::new(Kcp2KMode::Client),
             Arc::clone(&self.callback_tx),
+            Arc::clone(&self.remove_connection_tx),
         );
         self.connections.insert(connection_id, kcp_client_connection);
     }
@@ -109,6 +112,10 @@ impl Client {
         }
     }
     pub fn tick_incoming(&self) {
+        while let Ok(connection_id) = self.remove_connection_rx.try_recv() {
+            self.connections.remove(&connection_id);
+        }
+
         while let Some((sock_addr, data)) = self.raw_receive_from() {
             self.handle_data(&sock_addr, data);
         }
@@ -116,17 +123,13 @@ impl Client {
         for connection in self.connections.iter() {
             connection.tick_incoming();
         }
-
-        while let Some(connection_id) = self.removed_connections.write().unwrap().pop() {
-            drop(self.connections.remove(&connection_id));
-        }
     }
     pub fn tick_outgoing(&self) {
         for connection in self.connections.iter() {
             connection.tick_outgoing();
         }
     }
-    pub fn get_connections(&self) -> DashMap<u64, Kcp2KConnection> {
+    pub fn get_connections(&self) -> Arc<DashMap<u64, Kcp2KConnection>> {
         self.connections.clone()
     }
 }

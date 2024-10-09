@@ -43,7 +43,7 @@ impl Default for Kcp2KConfig {
             send_buffer_size: 1024 * 1024 * 7,
             mtu: 1200,                  // 假设这是 KCP 默认的 MTU
             no_delay: true,
-            interval: 20,
+            interval: 10,
             fast_resend: 0,
             congestion_window: false,
             send_window_size: 32,       // 假设这是发送窗口的默认大小

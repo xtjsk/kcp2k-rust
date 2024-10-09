@@ -65,7 +65,7 @@ fn main() {
                 }
             }
         }
-        sleep(std::time::Duration::from_millis(config.interval));
+        sleep(std::time::Duration::from_millis(10));
     }
 }
 

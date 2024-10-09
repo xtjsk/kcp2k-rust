@@ -29,7 +29,7 @@ impl Kcp2KPeer {
         let mut kcp = Kcp::new(0, udp_output);
         // set nodelay.
         // note that kcp uses 'nocwnd' internally so we negate the parameter
-        kcp.set_nodelay(if config.no_delay { true } else { false }, config.interval as i32, config.fast_resend, !config.congestion_window);
+        kcp.set_nodelay(if config.no_delay { true } else { false }, config.interval, config.fast_resend, !config.congestion_window);
         kcp.set_wndsize(config.send_window_size, config.receive_window_size);
 
         // IMPORTANT: high level needs to add 1 channel byte to each raw

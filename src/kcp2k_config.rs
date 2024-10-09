@@ -11,7 +11,7 @@ pub struct Kcp2KConfig {
     // NoDelay 设置，推荐用于减少延迟
     pub no_delay: bool,
     // KCP 内部更新间隔，建议低于默认的 100ms，以减少延迟和支持更多网络实体
-    pub interval: u64,
+    pub interval: i32,
     // 快速重传参数，以较高的带宽代价换取更快的重传
     pub fast_resend: i32,
     // 拥塞窗口，可能会显著增加延迟，建议禁用

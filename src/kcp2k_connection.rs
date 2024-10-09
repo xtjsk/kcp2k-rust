@@ -261,19 +261,20 @@ impl Kcp2KConnection {
 
 
         // 通过 KCP 发送处理
-        if let Ok(mut kcp) = self.kcp_peer.kcp.write() {
-            match kcp.send(&buffer) {
-                Ok(_) => {
-                    let _ = kcp.flush();
-                    Ok(())
-                }
-                Err(e) => {
-                    self.on_error(ErrorCode::InvalidSend, format!("{}: 发送失败，错误码={}，内容长度={}", "send_reliable", e, data.len()));
-                    Err(ErrorCode::SendError)
+        match self.kcp_peer.kcp.write() {
+            Ok(mut kcp) => {
+                match kcp.send(&buffer) {
+                    Ok(_) => Ok(()),
+                    Err(e) => {
+                        self.on_error(ErrorCode::InvalidSend, format!("{}: 发送失败，错误码={}，内容长度={}", "send_reliable", e, data.len()));
+                        Err(ErrorCode::SendError)
+                    }
                 }
             }
-        } else {
-            Err(ErrorCode::SendError)
+            Err(e) => {
+                self.on_error(ErrorCode::InvalidSend, format!("{}: 发送失败，错误码={}", "send_reliable", e));
+                Err(ErrorCode::SendError)
+            }
         }
     }
     fn send_unreliable(&self, kcp2k_header_unreliable: Kcp2KHeaderUnreliable, data: Bytes) -> Result<(), ErrorCode> {

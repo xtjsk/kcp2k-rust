@@ -22,8 +22,13 @@ fn main() {
                     println!("Client OnConnected {}", cb.connection_id);
                 }
                 CallbackType::OnData => {
-                    println!("Client received {:?} on channel {:?}", cb.data.as_ref(), cb.channel);
-                    if let Err(e) = client.c_send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable) {
+                    println!(
+                        "Client received {:?} on channel {:?}",
+                        cb.data.as_ref(),
+                        cb.channel
+                    );
+                    if let Err(e) = client.c_send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable)
+                    {
                         println!("Client send error {:?}", e);
                     }
                 }
@@ -38,4 +43,3 @@ fn main() {
         }
     }
 }
-

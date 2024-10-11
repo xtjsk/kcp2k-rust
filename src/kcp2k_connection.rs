@@ -24,14 +24,28 @@ pub struct Kcp2KConnection {
 }
 
 impl Kcp2KConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<Callback>>, remove_connection_tx: Arc<mpsc::Sender<u64>>) -> Self {
+    pub fn new(
+        config: Arc<Kcp2KConfig>,
+        cookie: Arc<Bytes>,
+        socket: Arc<Socket>,
+        connection_id: u64,
+        client_sock_addr: Arc<SockAddr>,
+        kcp2k_mode: Arc<Kcp2KMode>,
+        callback_tx: Arc<mpsc::Sender<Callback>>,
+        remove_connection_tx: Arc<mpsc::Sender<u64>>,
+    ) -> Self {
         let kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
             connection_id,
             client_sock_addr: Arc::clone(&client_sock_addr),
             callback_tx: Arc::clone(&callback_tx),
             remove_connection_tx,
-            kcp_peer: Kcp2KPeer::new(Arc::clone(&config), Arc::clone(&cookie), Arc::clone(&socket), Arc::clone(&client_sock_addr)),
+            kcp_peer: Kcp2KPeer::new(
+                Arc::clone(&config),
+                Arc::clone(&cookie),
+                Arc::clone(&socket),
+                Arc::clone(&client_sock_addr),
+            ),
             is_reliable_ping: config.is_reliable_ping,
         };
         if kcp2k_mode == Arc::from(Kcp2KMode::Client) {
@@ -99,12 +113,19 @@ impl Kcp2KConnection {
     fn raw_send(&self, data: &[u8]) -> Result<(), ErrorCode> {
         match self.socket.send_to(&data, &self.client_sock_addr) {
             Ok(_) => Ok(()),
-            Err(_) => Err(ErrorCode::SendError)
+            Err(_) => Err(ErrorCode::SendError),
         }
     }
     pub fn raw_input(&mut self, segment: Bytes) -> Result<(), ErrorCode> {
         if segment.len() <= 5 {
-            self.on_error(ErrorCode::InvalidReceive, format!("{}: Received invalid message with length={}. Disconnecting the connection.", std::any::type_name::<Self>(), segment.len()));
+            self.on_error(
+                ErrorCode::InvalidReceive,
+                format!(
+                    "{}: Received invalid message with length={}. Disconnecting the connection.",
+                    std::any::type_name::<Self>(),
+                    segment.len()
+                ),
+            );
             return Err(ErrorCode::InvalidReceive);
         }
 
@@ -119,11 +140,12 @@ impl Kcp2KConnection {
             }
         }
 
-
         // 消息
         let kcp_data = Bytes::copy_from_slice(&segment[5..]);
 
-        self.kcp_peer.last_recv_time.replace(self.kcp_peer.watch.elapsed());
+        self.kcp_peer
+            .last_recv_time
+            .replace(self.kcp_peer.watch.elapsed());
 
         // 根据通道类型处理消息
         match Kcp2KChannel::from(segment[0]) {
@@ -154,7 +176,14 @@ impl Kcp2KConnection {
             match kcp.recv(&mut buffer) {
                 Ok(size) => {
                     if size == 0 {
-                        let _ = self.on_error(ErrorCode::InvalidReceive, format!("{}: Receive failed with error={}. closing connection.", std::any::type_name::<Self>(), size));
+                        let _ = self.on_error(
+                            ErrorCode::InvalidReceive,
+                            format!(
+                                "{}: Receive failed with error={}. closing connection.",
+                                std::any::type_name::<Self>(),
+                                size
+                            ),
+                        );
                         let _ = self.on_disconnected();
                         return None;
                     }
@@ -185,11 +214,15 @@ impl Kcp2KConnection {
     fn raw_input_reliable(&self, data: Bytes) -> Result<(), ErrorCode> {
         if let Ok(mut kcp) = self.kcp_peer.kcp.write() {
             if let Err(e) = kcp.input(&data) {
-                self.on_error(ErrorCode::InvalidReceive,
-                              format!("[KCP2K] {}: Input failed with error={:?} for buffer with length={}",
-                                      std::any::type_name::<Self>(),
-                                      e,
-                                      data.len() - 1));
+                self.on_error(
+                    ErrorCode::InvalidReceive,
+                    format!(
+                        "[KCP2K] {}: Input failed with error={:?} for buffer with length={}",
+                        std::any::type_name::<Self>(),
+                        e,
+                        data.len() - 1
+                    ),
+                );
                 Err(ErrorCode::InvalidReceive)
             } else {
                 Ok(())
@@ -213,10 +246,11 @@ impl Kcp2KConnection {
                 let _ = self.on_disconnected();
                 self.on_error(
                     ErrorCode::InvalidReceive,
-                    format!("{}: Receive failed to parse header: {} is not defined in {}.",
-                            std::any::type_name::<Self>(),
-                            header,
-                            std::any::type_name::<Kcp2KHeaderUnreliable>()
+                    format!(
+                        "{}: Receive failed to parse header: {} is not defined in {}.",
+                        std::any::type_name::<Self>(),
+                        header,
+                        std::any::type_name::<Kcp2KHeaderUnreliable>()
                     ),
                 );
                 return Err(ErrorCode::InvalidReceive);
@@ -228,26 +262,28 @@ impl Kcp2KConnection {
 
         // 根据头部类型处理消息
         match header {
-            Kcp2KHeaderUnreliable::Data => {
-                match self.kcp_peer.state.get() {
-                    Kcp2KPeerState::Authenticated => {
-                        self.on_data(data, Kcp2KChannel::Unreliable);
-                        Ok(())
-                    }
-                    _ => {
-                        self.on_error(ErrorCode::InvalidReceive, format!("{}: Received Data message while not Authenticated. Disconnecting the connection.", std::any::type_name::<Self>()));
-                        Err(ErrorCode::InvalidReceive)
-                    }
+            Kcp2KHeaderUnreliable::Data => match self.kcp_peer.state.get() {
+                Kcp2KPeerState::Authenticated => {
+                    self.on_data(data, Kcp2KChannel::Unreliable);
+                    Ok(())
                 }
-            }
+                _ => {
+                    self.on_error(ErrorCode::InvalidReceive, format!("{}: Received Data message while not Authenticated. Disconnecting the connection.", std::any::type_name::<Self>()));
+                    Err(ErrorCode::InvalidReceive)
+                }
+            },
             Kcp2KHeaderUnreliable::Disconnect => {
                 self.on_disconnected();
                 Ok(())
             }
-            Kcp2KHeaderUnreliable::Ping => Ok(())
+            Kcp2KHeaderUnreliable::Ping => Ok(()),
         }
     }
-    fn send_reliable(&self, kcp2k_header_reliable: Kcp2KHeaderReliable, data: Bytes) -> Result<(), ErrorCode> {
+    fn send_reliable(
+        &self,
+        kcp2k_header_reliable: Kcp2KHeaderReliable,
+        data: Bytes,
+    ) -> Result<(), ErrorCode> {
         // 创建一个缓冲区，用于存储消息内容
         let mut buffer = vec![];
 
@@ -259,25 +295,37 @@ impl Kcp2KConnection {
             buffer.put_slice(&data);
         }
 
-
         // 通过 KCP 发送处理
         match self.kcp_peer.kcp.write() {
-            Ok(mut kcp) => {
-                match kcp.send(&buffer) {
-                    Ok(_) => Ok(()),
-                    Err(e) => {
-                        self.on_error(ErrorCode::InvalidSend, format!("{}: 发送失败，错误码={}，内容长度={}", "send_reliable", e, data.len()));
-                        Err(ErrorCode::SendError)
-                    }
+            Ok(mut kcp) => match kcp.send(&buffer) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    self.on_error(
+                        ErrorCode::InvalidSend,
+                        format!(
+                            "{}: 发送失败，错误码={}，内容长度={}",
+                            "send_reliable",
+                            e,
+                            data.len()
+                        ),
+                    );
+                    Err(ErrorCode::SendError)
                 }
-            }
+            },
             Err(e) => {
-                self.on_error(ErrorCode::InvalidSend, format!("{}: 发送失败，错误码={}", "send_reliable", e));
+                self.on_error(
+                    ErrorCode::InvalidSend,
+                    format!("{}: 发送失败，错误码={}", "send_reliable", e),
+                );
                 Err(ErrorCode::SendError)
             }
         }
     }
-    fn send_unreliable(&self, kcp2k_header_unreliable: Kcp2KHeaderUnreliable, data: Bytes) -> Result<(), ErrorCode> {
+    fn send_unreliable(
+        &self,
+        kcp2k_header_unreliable: Kcp2KHeaderUnreliable,
+        data: Bytes,
+    ) -> Result<(), ErrorCode> {
         // 创建一个缓冲区，用于存储消息内容
         let mut buffer = vec![];
 
@@ -329,7 +377,11 @@ impl Kcp2KConnection {
                     let _ = self.on_authenticated();
                 }
                 Kcp2KHeaderReliable::Data => {
-                    let _ = self.on_error(ErrorCode::InvalidReceive, "Received invalid header while Connected. Disconnecting the connection.".to_string());
+                    let _ = self.on_error(
+                        ErrorCode::InvalidReceive,
+                        "Received invalid header while Connected. Disconnecting the connection."
+                            .to_string(),
+                    );
                     let _ = self.on_disconnected();
                 }
                 Kcp2KHeaderReliable::Ping => {}
@@ -376,18 +428,18 @@ impl Kcp2KConnection {
     pub fn send_data(&mut self, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         // 如果数据为空，则返回错误
         if data.is_empty() {
-            self.on_error(ErrorCode::InvalidSend, "send_data: tried sending empty message. This should never happen. Disconnecting.".to_string());
+            self.on_error(
+                ErrorCode::InvalidSend,
+                "send_data: tried sending empty message. This should never happen. Disconnecting."
+                    .to_string(),
+            );
             let _ = self.on_disconnected();
             return Err(ErrorCode::SendError);
         }
         // 根据通道类型发送数据
         match channel {
-            Kcp2KChannel::Reliable => {
-                self.send_reliable(Kcp2KHeaderReliable::Data, data)
-            }
-            Kcp2KChannel::Unreliable => {
-                self.send_unreliable(Kcp2KHeaderUnreliable::Data, data)
-            }
+            Kcp2KChannel::Reliable => self.send_reliable(Kcp2KHeaderReliable::Data, data),
+            Kcp2KChannel::Unreliable => self.send_unreliable(Kcp2KHeaderUnreliable::Data, data),
             _ => {
                 self.on_error(ErrorCode::InvalidSend, format!("send_data: tried sending message with invalid channel: {:?}. Disconnecting.", channel));
                 let _ = self.on_disconnected();
@@ -403,7 +455,10 @@ impl Kcp2KConnection {
     }
     // 处理 ping
     fn handle_ping(&self, elapsed_time: Duration) {
-        if elapsed_time >= self.kcp_peer.last_send_ping_time.get() + Duration::from_millis(Kcp2KConfig::PING_INTERVAL) {
+        if elapsed_time
+            >= self.kcp_peer.last_send_ping_time.get()
+            + Duration::from_millis(Kcp2KConfig::PING_INTERVAL)
+        {
             self.kcp_peer.last_send_ping_time.replace(elapsed_time);
             let _ = self.send_ping();
         }
@@ -419,7 +474,10 @@ impl Kcp2KConnection {
     fn handle_dead_link(&self) {
         if let Ok(kcp) = self.kcp_peer.kcp.read() {
             if kcp.is_dead_link() {
-                let _ = self.on_error(ErrorCode::Timeout, "dead link to disconnecting.".to_string());
+                let _ = self.on_error(
+                    ErrorCode::Timeout,
+                    "dead link to disconnecting.".to_string(),
+                );
                 let _ = self.on_disconnected();
             }
         }

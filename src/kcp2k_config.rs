@@ -31,7 +31,8 @@ impl Kcp2KConfig {
     pub const CHANNEL_HEADER_SIZE: usize = 1;
     pub const COOKIE_HEADER_SIZE: usize = 4;
     pub const METADATA_SIZE_RELIABLE: usize = Self::CHANNEL_HEADER_SIZE + Self::COOKIE_HEADER_SIZE;
-    pub const METADATA_SIZE_UNRELIABLE: usize = Self::CHANNEL_HEADER_SIZE + Self::COOKIE_HEADER_SIZE;
+    pub const METADATA_SIZE_UNRELIABLE: usize =
+        Self::CHANNEL_HEADER_SIZE + Self::COOKIE_HEADER_SIZE;
 }
 
 impl Default for Kcp2KConfig {
@@ -41,16 +42,16 @@ impl Default for Kcp2KConfig {
             dual_mode: false,
             recv_buffer_size: 1024 * 1024 * 7,
             send_buffer_size: 1024 * 1024 * 7,
-            mtu: 1200,                  // 假设这是 KCP 默认的 MTU
+            mtu: 1200, // 假设这是 KCP 默认的 MTU
             no_delay: true,
             interval: 10,
             fast_resend: 0,
             congestion_window: false,
-            send_window_size: 32,       // 假设这是发送窗口的默认大小
-            receive_window_size: 128,   // 假设这是接收窗口的默认大小
-            timeout: 2000,              // 假设这是默认的超时时间
-            max_retransmits: 20,        // 假设这是默认的最大重传次数
-            is_reliable_ping: true,  // 假设这是默认的可靠 ping
+            send_window_size: 32,     // 假设这是发送窗口的默认大小
+            receive_window_size: 128, // 假设这是接收窗口的默认大小
+            timeout: 2000,            // 假设这是默认的超时时间
+            max_retransmits: 20,      // 假设这是默认的最大重传次数
+            is_reliable_ping: true,   // 假设这是默认的可靠 ping
         }
     }
 }

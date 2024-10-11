@@ -1,7 +1,7 @@
 use crate::error_code::ErrorCode;
 use crate::kcp2k_channel::Kcp2KChannel;
-use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
+use std::fmt::{Debug, Formatter};
 
 #[derive(Debug)]
 pub enum CallbackType {
@@ -27,13 +27,21 @@ impl Debug for Callback {
                 write!(f, "OnConnected: id {} ", self.connection_id)
             }
             CallbackType::OnData => {
-                write!(f, "OnData: id {} {:?} {:?}", self.connection_id, self.channel, self.data)
+                write!(
+                    f,
+                    "OnData: id {} {:?} {:?}",
+                    self.connection_id, self.channel, self.data
+                )
             }
             CallbackType::OnDisconnected => {
                 write!(f, "OnDisconnected: id {}", self.connection_id)
             }
             CallbackType::OnError => {
-                write!(f, "OnError: id {} - {:?} {}", self.connection_id, self.error_code, self.error_message)
+                write!(
+                    f,
+                    "OnError: id {} - {:?} {}",
+                    self.connection_id, self.error_code, self.error_message
+                )
             }
         }
     }

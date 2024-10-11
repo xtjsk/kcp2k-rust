@@ -9,10 +9,8 @@ fn main() {
     // 创建 KCP 服务器配置
     let config = Kcp2KConfig::default();
 
-
     // 创建 KCP 服务器
     let (server, s_rx) = Kcp2K::new_server(config, "0.0.0.0:3100".to_string()).unwrap();
-
 
     // 创建 KCP 客户端
     let (client, c_rx) = Kcp2K::new_client(config, "127.0.0.1:3100".to_string()).unwrap();
@@ -27,13 +25,25 @@ fn main() {
             match cb.callback_type {
                 CallbackType::OnConnected => {
                     println!("Server OnConnected {:?}", cb.connection_id);
-                    if let Err(e) = server.s_send(cb.connection_id, Bytes::from(vec![1, 2]), Kcp2KChannel::Reliable) {
+                    if let Err(e) = server.s_send(
+                        cb.connection_id,
+                        Bytes::from(vec![1, 2]),
+                        Kcp2KChannel::Reliable,
+                    ) {
                         println!("Server send error {:?}", e);
                     }
                 }
                 CallbackType::OnData => {
-                    println!("Server received {:?} on channel {:?}", cb.data.as_ref(), cb.channel);
-                    if let Err(e) = server.s_send(cb.connection_id, Bytes::from(vec![1, 2]), Kcp2KChannel::Reliable) {
+                    println!(
+                        "Server received {:?} on channel {:?}",
+                        cb.data.as_ref(),
+                        cb.channel
+                    );
+                    if let Err(e) = server.s_send(
+                        cb.connection_id,
+                        Bytes::from(vec![1, 2]),
+                        Kcp2KChannel::Reliable,
+                    ) {
                         println!("Server send error {:?}", e);
                     }
                 }
@@ -52,8 +62,13 @@ fn main() {
                     println!("Client OnConnected {}", cb.connection_id);
                 }
                 CallbackType::OnData => {
-                    println!("Client received {:?} on channel {:?}", cb.data.as_ref(), cb.channel);
-                    if let Err(e) = client.c_send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable) {
+                    println!(
+                        "Client received {:?} on channel {:?}",
+                        cb.data.as_ref(),
+                        cb.channel
+                    );
+                    if let Err(e) = client.c_send(Bytes::from(vec![3, 4]), Kcp2KChannel::Unreliable)
+                    {
                         println!("Client send error {:?}", e);
                     }
                 }
@@ -68,4 +83,3 @@ fn main() {
         sleep(std::time::Duration::from_millis(10));
     }
 }
-

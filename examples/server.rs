@@ -19,13 +19,25 @@ fn main() {
             match cb.callback_type {
                 CallbackType::OnConnected => {
                     println!("Server OnConnected {:?}", cb.connection_id);
-                    if let Err(e) = server.s_send(cb.connection_id, Bytes::from(vec![1, 2]), Kcp2KChannel::Reliable) {
+                    if let Err(e) = server.s_send(
+                        cb.connection_id,
+                        Bytes::from(vec![1, 2]),
+                        Kcp2KChannel::Reliable,
+                    ) {
                         println!("Server send error {:?}", e);
                     }
                 }
                 CallbackType::OnData => {
-                    println!("Server received {:?} on channel {:?}", cb.data.as_ref(), cb.channel);
-                    if let Err(e) = server.s_send(cb.connection_id, Bytes::from(vec![1, 2]), Kcp2KChannel::Reliable) {
+                    println!(
+                        "Server received {:?} on channel {:?}",
+                        cb.data.as_ref(),
+                        cb.channel
+                    );
+                    if let Err(e) = server.s_send(
+                        cb.connection_id,
+                        Bytes::from(vec![1, 2]),
+                        Kcp2KChannel::Reliable,
+                    ) {
                         println!("Server send error {:?}", e);
                     }
                 }
@@ -39,4 +51,3 @@ fn main() {
         }
     }
 }
-

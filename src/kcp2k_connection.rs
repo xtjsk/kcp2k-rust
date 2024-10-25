@@ -24,16 +24,7 @@ pub struct Kcp2KConnection {
 }
 
 impl Kcp2KConnection {
-    pub fn new(
-        config: Arc<Kcp2KConfig>,
-        cookie: Arc<Bytes>,
-        socket: Arc<Socket>,
-        connection_id: u64,
-        client_sock_addr: Arc<SockAddr>,
-        kcp2k_mode: Arc<Kcp2KMode>,
-        callback_tx: Arc<mpsc::Sender<Callback>>,
-        remove_connection_tx: Arc<mpsc::Sender<u64>>,
-    ) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<Callback>>, remove_connection_tx: Arc<mpsc::Sender<u64>>) -> Self {
         let kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
             connection_id,
@@ -143,9 +134,9 @@ impl Kcp2KConnection {
         // 消息
         let kcp_data = Bytes::copy_from_slice(&segment[5..]);
 
-        self.kcp_peer
-            .last_recv_time
-            .replace(self.kcp_peer.watch.elapsed());
+        if let Ok(mut last_recv_time) = self.kcp_peer.last_recv_time.write() {
+            *last_recv_time = self.kcp_peer.watch.elapsed();
+        }
 
         // 根据通道类型处理消息
         match Kcp2KChannel::from(segment[0]) {
@@ -279,11 +270,7 @@ impl Kcp2KConnection {
             Kcp2KHeaderUnreliable::Ping => Ok(()),
         }
     }
-    fn send_reliable(
-        &self,
-        kcp2k_header_reliable: Kcp2KHeaderReliable,
-        data: Bytes,
-    ) -> Result<(), ErrorCode> {
+    fn send_reliable(&self, kcp2k_header_reliable: Kcp2KHeaderReliable, data: Bytes) -> Result<(), ErrorCode> {
         // 创建一个缓冲区，用于存储消息内容
         let mut buffer = vec![];
 
@@ -321,11 +308,7 @@ impl Kcp2KConnection {
             }
         }
     }
-    fn send_unreliable(
-        &self,
-        kcp2k_header_unreliable: Kcp2KHeaderUnreliable,
-        data: Bytes,
-    ) -> Result<(), ErrorCode> {
+    fn send_unreliable(&self, kcp2k_header_unreliable: Kcp2KHeaderUnreliable, data: Bytes) -> Result<(), ErrorCode> {
         // 创建一个缓冲区，用于存储消息内容
         let mut buffer = vec![];
 
@@ -364,6 +347,10 @@ impl Kcp2KConnection {
             }
             Kcp2KPeerState::Disconnected => {}
         }
+    }
+    // 获取地址
+    pub fn get_sock_addr(&self) -> Arc<SockAddr> {
+        Arc::clone(&self.client_sock_addr)
     }
     // 处理连接
     fn tick_incoming_connected(&self, elapsed_time: Duration) {
@@ -455,19 +442,20 @@ impl Kcp2KConnection {
     }
     // 处理 ping
     fn handle_ping(&self, elapsed_time: Duration) {
-        if elapsed_time
-            >= self.kcp_peer.last_send_ping_time.get()
-            + Duration::from_millis(Kcp2KConfig::PING_INTERVAL)
-        {
-            self.kcp_peer.last_send_ping_time.replace(elapsed_time);
-            let _ = self.send_ping();
+        if let Ok(mut last_send_ping_time) = self.kcp_peer.last_send_ping_time.write() {
+            if elapsed_time >= *last_send_ping_time + Duration::from_millis(Kcp2KConfig::PING_INTERVAL) {
+                *last_send_ping_time = elapsed_time;
+                let _ = self.send_ping();
+            }
         }
     }
     // 处理超时
     fn handle_timeout(&self, elapsed_time: Duration) {
-        if elapsed_time > self.kcp_peer.last_recv_time.get() + self.kcp_peer.timeout_duration {
-            let _ = self.on_error(ErrorCode::Timeout, "timeout to disconnected.".to_string());
-            let _ = self.on_disconnected();
+        if let Ok(last_recv_time) = self.kcp_peer.last_recv_time.read() {
+            if elapsed_time > *last_recv_time + self.kcp_peer.timeout_duration {
+                let _ = self.on_error(ErrorCode::Timeout, "timeout to disconnected.".to_string());
+                let _ = self.on_disconnected();
+            }
         }
     }
     // 处理 dead_link

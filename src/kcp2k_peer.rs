@@ -12,13 +12,13 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct Kcp2KPeer {
-    pub cookie: Arc<Bytes>,               // cookie
-    pub state: Cell<Kcp2KPeerState>,      // 状态
-    pub kcp: Arc<RwLock<Kcp<UdpOutput>>>, // kcp
+    pub cookie: Arc<Bytes>,                         // cookie
+    pub state: Cell<Kcp2KPeerState>,                // 状态
+    pub kcp: Arc<RwLock<Kcp<UdpOutput>>>,           // kcp
     pub watch: Instant,
-    pub timeout_duration: Duration,          // 超时时间
-    pub last_recv_time: Cell<Duration>,      // 最后接收时间
-    pub last_send_ping_time: Cell<Duration>, // 最后发送 ping 的时间
+    pub timeout_duration: Duration,                 // 超时时间
+    pub last_recv_time: Arc<RwLock<Duration>>,      // 最后接收时间
+    pub last_send_ping_time: Arc<RwLock<Duration>>, // 最后发送 ping 的时间
 }
 
 impl Kcp2KPeer {
@@ -62,8 +62,8 @@ impl Kcp2KPeer {
             state: Cell::new(Kcp2KPeerState::Connected),
             timeout_duration: Duration::from_millis(config.timeout),
             watch: Instant::now(),
-            last_recv_time: Cell::new(Duration::from_secs(0)),
-            last_send_ping_time: Cell::new(Duration::from_secs(0)),
+            last_recv_time: Arc::new(RwLock::new(Duration::from_secs(0))),
+            last_send_ping_time: Arc::new(RwLock::new(Duration::from_secs(0))),
         }
     }
 }

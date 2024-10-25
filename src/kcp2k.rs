@@ -8,6 +8,7 @@ use crate::kcp2k_header::Kcp2KHeaderReliable;
 use crate::kcp2k_peer::Kcp2KPeer;
 use bytes::Bytes;
 use common::Kcp2KMode;
+use dashmap::mapref::one::RefMut;
 use dashmap::DashMap;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::io::Error;
@@ -29,96 +30,32 @@ pub struct Kcp2K {
 }
 
 impl Kcp2K {
-    pub fn new_server(
-        config: Kcp2KConfig,
-        addr: String,
-    ) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
+    pub fn new_server(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
         let socket_addr: SocketAddr = addr.parse().unwrap();
-        let socket = Socket::new(
-            if config.dual_mode {
-                Domain::IPV6
-            } else {
-                Domain::IPV4
-            },
-            Type::DGRAM,
-            Option::from(Protocol::UDP),
-        )?;
-        common::configure_socket_buffers(
-            &socket,
-            config.recv_buffer_size,
-            config.send_buffer_size,
-            Arc::new(Kcp2KMode::Server),
-        )?;
+        let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
+        common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
         socket.set_nonblocking(true)?;
         socket.bind(&socket_addr.into())?;
         let (callback_tx, callback_rx) = mpsc::channel::<Callback>();
         let (remove_connection_tx, remove_connection_rx) = mpsc::channel::<u64>();
-        let server = Self::new(
-            config,
-            Kcp2KMode::Server,
-            socket,
-            callback_tx,
-            remove_connection_tx,
-            remove_connection_rx,
-        );
-        info!(format!(
-            "[KCP2K] Server bind on: {:?}",
-            server.socket.local_addr()?.as_socket().unwrap()
-        ));
+        let server = Self::new(config, Kcp2KMode::Server, socket, callback_tx, remove_connection_tx, remove_connection_rx);
+        info!(format!("[KCP2K] Server bind on: {:?}",server.socket.local_addr()?.as_socket().unwrap()));
         Ok((server, callback_rx))
     }
-    pub fn new_client(
-        config: Kcp2KConfig,
-        addr: String,
-    ) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
+    pub fn new_client(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
         let address: SocketAddr = addr.parse().unwrap();
-        let socket = Socket::new(
-            if config.dual_mode {
-                Domain::IPV6
-            } else {
-                Domain::IPV4
-            },
-            Type::DGRAM,
-            Option::from(Protocol::UDP),
-        )?;
-        common::configure_socket_buffers(
-            &socket,
-            config.recv_buffer_size,
-            config.send_buffer_size,
-            Arc::new(Kcp2KMode::Client),
-        )?;
+        let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
+        common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Client))?;
         socket.set_nonblocking(true)?;
         socket.connect(&address.into())?;
         let (callback_tx, callback_rx) = mpsc::channel::<Callback>();
         let (remove_connection_tx, remove_connection_rx) = mpsc::channel::<u64>();
-        let client = Self::new(
-            config,
-            Kcp2KMode::Client,
-            socket,
-            callback_tx,
-            remove_connection_tx,
-            remove_connection_rx,
-        );
-        client.create_connection(
-            client
-                .client_model_default_connection_id
-                .load(Ordering::SeqCst),
-            address.into(),
-        );
-        info!(format!(
-            "[KCP2K] Client connecting to: {:?}",
-            client.socket.peer_addr()?.as_socket().unwrap()
-        ));
+        let client = Self::new(config, Kcp2KMode::Client, socket, callback_tx, remove_connection_tx, remove_connection_rx);
+        client.create_connection(client.client_model_default_connection_id.load(Ordering::SeqCst), address.into());
+        info!(format!("[KCP2K] Client connecting to: {:?}",client.socket.peer_addr()?.as_socket().unwrap()));
         Ok((client, callback_rx))
     }
-    fn new(
-        config: Kcp2KConfig,
-        mode: Kcp2KMode,
-        socket: Socket,
-        callback_tx: mpsc::Sender<Callback>,
-        remove_connection_tx: mpsc::Sender<u64>,
-        remove_connection_rx: mpsc::Receiver<u64>,
-    ) -> Self {
+    fn new(config: Kcp2KConfig, mode: Kcp2KMode, socket: Socket, callback_tx: mpsc::Sender<Callback>, remove_connection_tx: mpsc::Sender<u64>, remove_connection_rx: mpsc::Receiver<u64>) -> Self {
         Self {
             mode,
             config: Arc::new(config),
@@ -133,15 +70,10 @@ impl Kcp2K {
     pub fn stop(&self) -> Result<(), Error> {
         match self.socket.shutdown(std::net::Shutdown::Both) {
             Ok(_) => Ok(()),
-            Err(_) => Err(Error::from_raw_os_error(0)),
+            Err(_) => Err(Error::from_raw_os_error(1)),
         }
     }
-    pub fn s_send(
-        &self,
-        connection_id: u64,
-        data: Bytes,
-        channel: Kcp2KChannel,
-    ) -> Result<(), ErrorCode> {
+    pub fn s_send(&self, connection_id: u64, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         if let Some(mut connection) = self.connections.get_mut(&connection_id) {
             connection.send_data(data, channel)
         } else {
@@ -254,14 +186,22 @@ impl Kcp2K {
             connection.tick_outgoing();
         }
     }
-    pub fn get_connection(&self, connection_id: u64) -> Option<Kcp2KConnection> {
-        if let Some(connection) = self.connections.get(&connection_id) {
-            Some(connection.clone())
+    pub fn get_connection(&self, connection_id: u64) -> Option<RefMut<u64, Kcp2KConnection>> {
+        if let Some(connection) = self.connections.get_mut(&connection_id) {
+            Some(connection)
         } else {
             None
         }
     }
-    pub fn get_connections(&self) -> Arc<DashMap<u64, Kcp2KConnection>> {
-        Arc::clone(&self.connections)
+    pub fn get_connection_address(&self, connection_id: u64) -> String {
+        if let Some(connection) = self.connections.get(&connection_id) {
+            if let Some(sock_addr) = connection.get_sock_addr().as_socket() {
+                return sock_addr.to_string();
+            }
+        };
+        "".to_string()
+    }
+    pub fn get_connections(&self) -> &Arc<DashMap<u64, Kcp2KConnection>> {
+        &self.connections
     }
 }

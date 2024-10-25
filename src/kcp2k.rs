@@ -215,4 +215,7 @@ impl Kcp2K {
     pub fn get_connections(&self) -> &Arc<DashMap<u64, Kcp2KConnection>> {
         &self.connections
     }
+    pub fn close_connection(&self, connection_id: u64) {
+        let _ = self.remove_connection_tx.send(connection_id);
+    }
 }

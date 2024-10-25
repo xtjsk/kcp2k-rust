@@ -16,7 +16,7 @@ use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
-use tklog::{debug, info};
+use tklog::{debug, info, warn};
 
 pub struct Kcp2K {
     mode: Kcp2KMode,
@@ -69,8 +69,18 @@ impl Kcp2K {
     }
     pub fn stop(&self) -> Result<(), Error> {
         match self.socket.shutdown(std::net::Shutdown::Both) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(Error::from_raw_os_error(1)),
+            Ok(_) => {
+                drop(self.callback_tx.clone());
+                drop(self.remove_connection_tx.clone());
+                drop(self.remove_connection_rx.clone());
+                self.connections.clear();
+                warn!("[KCP2K] Stopped".to_string());
+                Ok(())
+            }
+            Err(_) => {
+                warn!("[KCP2K] Failed to stop KCP2K".to_string());
+                Err(Error::from_raw_os_error(1))
+            }
         }
     }
     pub fn s_send(&self, connection_id: u64, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {

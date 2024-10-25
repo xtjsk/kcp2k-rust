@@ -1,3 +1,4 @@
+extern crate crossbeam_channel;
 pub mod common;
 pub mod error_code;
 pub mod kcp2k;

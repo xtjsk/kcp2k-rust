@@ -34,7 +34,7 @@ fn main() {
                     }
                 }
                 CallbackType::OnData => {
-                    println!("{}",server.get_connection_address(cb.connection_id));
+                    println!("{}", server.get_connection_address(cb.connection_id));
                     println!(
                         "Server received {:?} on channel {:?}",
                         cb.data.as_ref(),

@@ -8,6 +8,7 @@ use crate::kcp2k_header::Kcp2KHeaderReliable;
 use crate::kcp2k_peer::Kcp2KPeer;
 use bytes::Bytes;
 use common::Kcp2KMode;
+use crossbeam_channel;
 use dashmap::mapref::one::RefMut;
 use dashmap::DashMap;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
@@ -15,7 +16,7 @@ use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use tklog::{debug, info, warn};
 
 pub struct Kcp2K {
@@ -23,39 +24,39 @@ pub struct Kcp2K {
     config: Arc<Kcp2KConfig>, // 配置
     socket: Arc<Socket>,      // socket
     connections: Arc<DashMap<u64, Kcp2KConnection>>,
-    callback_tx: Arc<mpsc::Sender<Callback>>,
-    remove_connection_tx: Arc<mpsc::Sender<u64>>,
-    remove_connection_rx: Arc<mpsc::Receiver<u64>>,
+    callback_tx: Arc<crossbeam_channel::Sender<Callback>>,
+    remove_connection_tx: Arc<crossbeam_channel::Sender<u64>>,
+    remove_connection_rx: Arc<crossbeam_channel::Receiver<u64>>,
     client_model_default_connection_id: AtomicU64,
 }
 
 impl Kcp2K {
-    pub fn new_server(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
+    pub fn new_server(config: Kcp2KConfig, addr: String) -> Result<(Self, crossbeam_channel::Receiver<Callback>), Error> {
         let socket_addr: SocketAddr = addr.parse().unwrap();
         let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
         common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Server))?;
         socket.set_nonblocking(true)?;
         socket.bind(&socket_addr.into())?;
-        let (callback_tx, callback_rx) = mpsc::channel::<Callback>();
-        let (remove_connection_tx, remove_connection_rx) = mpsc::channel::<u64>();
+        let (callback_tx, callback_rx) = crossbeam_channel::unbounded::<Callback>();
+        let (remove_connection_tx, remove_connection_rx) = crossbeam_channel::unbounded::<u64>();
         let server = Self::new(config, Kcp2KMode::Server, socket, callback_tx, remove_connection_tx, remove_connection_rx);
         info!(format!("[KCP2K] Server bind on: {:?}",server.socket.local_addr()?.as_socket().unwrap()));
         Ok((server, callback_rx))
     }
-    pub fn new_client(config: Kcp2KConfig, addr: String) -> Result<(Self, mpsc::Receiver<Callback>), Error> {
+    pub fn new_client(config: Kcp2KConfig, addr: String) -> Result<(Self, crossbeam_channel::Receiver<Callback>), Error> {
         let address: SocketAddr = addr.parse().unwrap();
         let socket = Socket::new(if config.dual_mode { Domain::IPV6 } else { Domain::IPV4 }, Type::DGRAM, Option::from(Protocol::UDP))?;
         common::configure_socket_buffers(&socket, config.recv_buffer_size, config.send_buffer_size, Arc::new(Kcp2KMode::Client))?;
         socket.set_nonblocking(true)?;
         socket.connect(&address.into())?;
-        let (callback_tx, callback_rx) = mpsc::channel::<Callback>();
-        let (remove_connection_tx, remove_connection_rx) = mpsc::channel::<u64>();
+        let (callback_tx, callback_rx) = crossbeam_channel::unbounded::<Callback>();
+        let (remove_connection_tx, remove_connection_rx) = crossbeam_channel::unbounded::<u64>();
         let client = Self::new(config, Kcp2KMode::Client, socket, callback_tx, remove_connection_tx, remove_connection_rx);
         client.create_connection(client.client_model_default_connection_id.load(Ordering::SeqCst), address.into());
         info!(format!("[KCP2K] Client connecting to: {:?}",client.socket.peer_addr()?.as_socket().unwrap()));
         Ok((client, callback_rx))
     }
-    fn new(config: Kcp2KConfig, mode: Kcp2KMode, socket: Socket, callback_tx: mpsc::Sender<Callback>, remove_connection_tx: mpsc::Sender<u64>, remove_connection_rx: mpsc::Receiver<u64>) -> Self {
+    fn new(config: Kcp2KConfig, mode: Kcp2KMode, socket: Socket, callback_tx: crossbeam_channel::Sender<Callback>, remove_connection_tx: crossbeam_channel::Sender<u64>, remove_connection_rx: crossbeam_channel::Receiver<u64>) -> Self {
         Self {
             mode,
             config: Arc::new(config),

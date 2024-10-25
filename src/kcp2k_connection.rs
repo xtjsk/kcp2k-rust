@@ -8,7 +8,7 @@ use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::{BufMut, Bytes, BytesMut};
 use socket2::{SockAddr, Socket};
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 use std::time::Duration;
 
 // KcpServerConnection
@@ -17,14 +17,14 @@ pub struct Kcp2KConnection {
     socket: Arc<Socket>,
     connection_id: u64,
     client_sock_addr: Arc<SockAddr>,
-    callback_tx: Arc<mpsc::Sender<Callback>>,
-    remove_connection_tx: Arc<mpsc::Sender<u64>>,
+    callback_tx: Arc<crossbeam_channel::Sender<Callback>>,
+    remove_connection_tx: Arc<crossbeam_channel::Sender<u64>>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
 
 impl Kcp2KConnection {
-    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<mpsc::Sender<Callback>>, remove_connection_tx: Arc<mpsc::Sender<u64>>) -> Self {
+    pub fn new(config: Arc<Kcp2KConfig>, cookie: Arc<Bytes>, socket: Arc<Socket>, connection_id: u64, client_sock_addr: Arc<SockAddr>, kcp2k_mode: Arc<Kcp2KMode>, callback_tx: Arc<crossbeam_channel::Sender<Callback>>, remove_connection_tx: Arc<crossbeam_channel::Sender<u64>>) -> Self {
         let kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
             connection_id,

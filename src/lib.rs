@@ -7,5 +7,5 @@ pub mod kcp2k_channel;
 pub mod kcp2k_config;
 mod kcp2k_connection;
 mod kcp2k_header;
-mod kcp2k_peer;
+pub mod kcp2k_peer;
 mod kcp2k_state;

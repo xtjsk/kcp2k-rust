@@ -2,7 +2,7 @@ use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::{BufMut, Bytes, BytesMut};
-use kcp::Kcp;
+use kcp::{Kcp, KCP_OVERHEAD};
 use socket2::{SockAddr, Socket};
 use std::cell::Cell;
 use std::io;
@@ -65,6 +65,16 @@ impl Kcp2KPeer {
             last_recv_time: Arc::new(RwLock::new(Duration::from_secs(0))),
             last_send_ping_time: Arc::new(RwLock::new(Duration::from_secs(0))),
         }
+    }
+
+    pub fn reliable_max_message_size_unconstrained(mtu: u32, rcv_wnd: u32) -> usize {
+        ((mtu - KCP_OVERHEAD as u32 - 5) * (rcv_wnd - 1) - 1) as usize
+    }
+    pub fn reliable_max_message_size(mtu: u32, rcv_wnd: u32) -> usize {
+        Self::reliable_max_message_size_unconstrained(mtu, rcv_wnd.min(255))
+    }
+    pub fn unreliable_max_message_size(mtu: u32) -> usize {
+        (mtu - KCP_OVERHEAD as u32 - 1) as usize
     }
 }
 

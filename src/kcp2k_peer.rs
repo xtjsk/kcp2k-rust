@@ -4,21 +4,20 @@ use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::{BufMut, Bytes, BytesMut};
 use kcp::{Kcp, KCP_OVERHEAD};
 use socket2::{SockAddr, Socket};
-use std::cell::Cell;
 use std::io;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Kcp2KPeer {
-    pub cookie: Arc<Bytes>,                         // cookie
-    pub state: Cell<Kcp2KPeerState>,                // 状态
-    pub kcp: Arc<RwLock<Kcp<UdpOutput>>>,           // kcp
+    pub cookie: Arc<Bytes>,            // cookie
+    pub state: RwLock<Kcp2KPeerState>, // 状态
+    pub kcp: RwLock<Kcp<UdpOutput>>,   // kcp
     pub watch: Instant,
-    pub timeout_duration: Duration,                 // 超时时间
-    pub last_recv_time: Arc<RwLock<Duration>>,      // 最后接收时间
-    pub last_send_ping_time: Arc<RwLock<Duration>>, // 最后发送 ping 的时间
+    pub timeout_duration: Duration,            // 超时时间
+    pub last_recv_time: RwLock<Duration>,      // 最后接收时间
+    pub last_send_ping_time: RwLock<Duration>, // 最后发送 ping 的时间
 }
 
 impl Kcp2KPeer {
@@ -57,13 +56,13 @@ impl Kcp2KPeer {
         kcp.set_maximum_resend_times(config.max_retransmits);
 
         Self {
-            kcp: Arc::new(RwLock::new(kcp)),
+            kcp: RwLock::new(kcp),
             cookie,
-            state: Cell::new(Kcp2KPeerState::Connected),
+            state: RwLock::new(Kcp2KPeerState::Connected),
             timeout_duration: Duration::from_millis(config.timeout),
             watch: Instant::now(),
-            last_recv_time: Arc::new(RwLock::new(Duration::from_secs(0))),
-            last_send_ping_time: Arc::new(RwLock::new(Duration::from_secs(0))),
+            last_recv_time: RwLock::new(Duration::from_secs(0)),
+            last_send_ping_time: RwLock::new(Duration::from_secs(0)),
         }
     }
 

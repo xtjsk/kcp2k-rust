@@ -1,3 +1,4 @@
+use crate::common::Kcp2KMode;
 use crate::kcp2k_channel::Kcp2KChannel;
 use crate::kcp2k_config::Kcp2KConfig;
 use crate::kcp2k_state::Kcp2KPeerState;
@@ -8,6 +9,7 @@ use std::io;
 use std::io::Write;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+use tklog::error;
 
 #[derive(Debug)]
 pub struct Kcp2KPeer {
@@ -22,6 +24,7 @@ pub struct Kcp2KPeer {
 
 impl Kcp2KPeer {
     pub fn new(
+        kcp2k_mode: Arc<Kcp2KMode>,
         config: Arc<Kcp2KConfig>,
         cookie: Arc<Bytes>,
         socket: Arc<Socket>,
@@ -29,6 +32,7 @@ impl Kcp2KPeer {
     ) -> Self {
         // set up kcp over reliable channel (that's what kcp is for)
         let udp_output = UdpOutput::new(
+            kcp2k_mode,
             Arc::clone(&cookie),
             Arc::clone(&socket),
             Arc::clone(&client_sock_addr),
@@ -79,6 +83,7 @@ impl Kcp2KPeer {
 
 #[derive(Debug)]
 pub struct UdpOutput {
+    kcp2k_mode: Arc<Kcp2KMode>,      // kcp2k_mode
     cookie: Arc<Bytes>,              // cookie
     socket: Arc<Socket>,             // socket
     client_sock_addr: Arc<SockAddr>, // client_sock_addr
@@ -87,11 +92,13 @@ pub struct UdpOutput {
 impl UdpOutput {
     // 创建一个新的 Writer，用于将数据包写入 UdpSocket
     pub fn new(
+        kcp2k_mode: Arc<Kcp2KMode>,
         cookie: Arc<Bytes>,
         socket: Arc<Socket>,
         client_sock_addr: Arc<SockAddr>,
     ) -> UdpOutput {
         UdpOutput {
+            kcp2k_mode,
             cookie,
             socket,
             client_sock_addr,
@@ -114,9 +121,29 @@ impl Write for UdpOutput {
         buffer.put_slice(buf);
 
         // 发送数据
-        match self.socket.send_to(&buffer, &self.client_sock_addr) {
-            Ok(_) => Ok(buf.len()),
-            Err(_) => Ok(0),
+        match *self.kcp2k_mode {
+            Kcp2KMode::Client => match self.socket.send(&buffer) {
+                Ok(_) => Ok(buf.len()),
+                Err(e) => {
+                    error!(format!(
+                        "socket send_to {:?} failed: {:?}",
+                        self.client_sock_addr.as_socket().unwrap(),
+                        e
+                    ));
+                    Ok(0)
+                }
+            },
+            Kcp2KMode::Server => match self.socket.send_to(&buffer, &self.client_sock_addr) {
+                Ok(_) => Ok(buf.len()),
+                Err(e) => {
+                    error!(format!(
+                        "socket send_to {:?} failed: {:?}",
+                        self.client_sock_addr.as_socket().unwrap(),
+                        e
+                    ));
+                    Ok(0)
+                }
+            },
         }
     }
 

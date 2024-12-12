@@ -42,6 +42,7 @@ impl Kcp2KConnection {
             callback,
             remove_connection_tx,
             kcp_peer: Kcp2KPeer::new(
+                Arc::clone(&kcp2k_mode),
                 Arc::clone(&config),
                 Arc::clone(&cookie),
                 Arc::clone(&socket),

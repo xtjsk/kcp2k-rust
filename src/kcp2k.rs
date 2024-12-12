@@ -213,6 +213,7 @@ impl Kcp2K {
                             .load(Ordering::SeqCst),
                     );
                     conn.set_kcp_peer(Kcp2KPeer::new(
+                        Arc::new(self.mode),
                         Arc::clone(&self.config),
                         Arc::new(cookie),
                         Arc::clone(&self.socket),

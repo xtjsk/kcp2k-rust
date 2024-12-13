@@ -22,15 +22,6 @@ KCP2K（KCP with K2 network layer）协议的 Rust 实现，为游戏和实时�
 kcp2k_rust = { git = "https://github.com/xtjsk/kcp2k-rust.git" }
 ```
 
-## 依赖项
-
-- kcp = "0.5.3"
-- bytes = "1.7.1"
-- rand = "0.9.0-alpha.2"
-- socket2 = "0.5.7"
-- tklog = "0.2.1"
-- dashmap = "6.1.0"
-- crossbeam-channel = "0.5.13"
 
 ## 使用方法
 
@@ -38,60 +29,46 @@ kcp2k_rust = { git = "https://github.com/xtjsk/kcp2k-rust.git" }
 
 ```rust
 use kcp2k_rust::kcp2k::Kcp2K;
+use kcp2k_rust::kcp2k_callback::Callback;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
+fn call_back(cb: Callback) {
+    println!("{:?}", cb);
+}
+fn main() {
+    // 创建 KCP 服务器配置
+    let config = Kcp2KConfig::default();
 
-// 创建服务器配置
-let config = Kcp2KConfig::default();
+    // 创建 KCP 服务器
+    let server = Kcp2K::new_server(config, "0.0.0.0:3100".to_string(), call_back).unwrap();
 
-// 创建 KCP 服务器
-let (server, s_rx) = Kcp2K::new_server(config, "0.0.0.0:3100".to_string()).unwrap();
-
-loop {
-    // 服务器处理
-    server.tick();
-    
-    // 处理回调
-    if let Ok(cb) = s_rx.try_recv() {
-        match cb.callback_type {
-            CallbackType::OnConnected => {
-                println!("客户端已连接: {}", cb.connection_id);
-            }
-            CallbackType::OnData => {
-                println!("在通道 {:?} 上收到数据", cb.channel);
-            }
-            // ... 处理其他回调
-        }
+    loop {
+        // 服务器处理
+        server.tick();
     }
 }
+
 ```
 
 ### 客户端示例
 
 ```rust
 use kcp2k_rust::kcp2k::Kcp2K;
+use kcp2k_rust::kcp2k_callback::Callback;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
 
-// 创建客户端配置
-let config = Kcp2KConfig::default();
+fn call_back(cb: Callback) {
+    println!("{:?}", cb);
+}
+fn main() {
+    // 创建 KCP 客户端配置
+    let config = Kcp2KConfig::default();
 
-// 创建 KCP 客户端
-let (client, c_rx) = Kcp2K::new_client(config, "127.0.0.1:7777".to_string()).unwrap();
+    // 创建 KCP 客户端
+    let client = Kcp2K::new_client(config, "127.0.0.1:3100".to_string(), call_back).unwrap();
 
-loop {
-    // 客户端处理
-    client.tick();
-    
-    // 处理回调
-    if let Ok(cb) = c_rx.try_recv() {
-        match cb.callback_type {
-            CallbackType::OnConnected => {
-                println!("已连接到服务器");
-            }
-            CallbackType::OnData => {
-                println!("在通道 {:?} 上收到数据", cb.channel);
-            }
-            // ... 处理其他回调
-        }
+    loop {
+        // 客户端处理
+        client.tick();
     }
 }
 ```

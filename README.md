@@ -22,76 +22,52 @@ Add this to your `Cargo.toml`:
 kcp2k_rust = { git = "https://github.com/xtjsk/kcp2k-rust.git" }
 ```
 
-## Dependencies
-
-- kcp = "0.5.3"
-- bytes = "1.7.1"
-- rand = "0.9.0-alpha.2"
-- socket2 = "0.5.7"
-- tklog = "0.2.1"
-- dashmap = "6.1.0"
-- crossbeam-channel = "0.5.13"
-
 ## Usage
 
 ### Server Example
 
 ```rust
 use kcp2k_rust::kcp2k::Kcp2K;
+use kcp2k_rust::kcp2k_callback::Callback;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
+fn call_back(cb: Callback) {
+    println!("{:?}", cb);
+}
+fn main() {
+    // 创建 KCP 服务器配置
+    let config = Kcp2KConfig::default();
 
-// Create server configuration
-let config = Kcp2KConfig::default();
+    // 创建 KCP 服务器
+    let server = Kcp2K::new_server(config, "0.0.0.0:3100".to_string(), call_back).unwrap();
 
-// Create KCP server
-let (server, s_rx) = Kcp2K::new_server(config, "0.0.0.0:3100".to_string()).unwrap();
-
-loop {
-    // Server tick
-    server.tick();
-    
-    // Handle callbacks
-    if let Ok(cb) = s_rx.try_recv() {
-        match cb.callback_type {
-            CallbackType::OnConnected => {
-                println!("Client connected: {}", cb.connection_id);
-            }
-            CallbackType::OnData => {
-                println!("Received data on channel: {:?}", cb.channel);
-            }
-            // ... handle other callbacks
-        }
+    loop {
+        // 服务器处理
+        server.tick();
     }
 }
+
 ```
 
 ### Client Example
 
 ```rust
 use kcp2k_rust::kcp2k::Kcp2K;
+use kcp2k_rust::kcp2k_callback::Callback;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
 
-// Create client configuration
-let config = Kcp2KConfig::default();
+fn call_back(cb: Callback) {
+    println!("{:?}", cb);
+}
+fn main() {
+    // 创建 KCP 客户端配置
+    let config = Kcp2KConfig::default();
 
-// Create KCP client
-let (client, c_rx) = Kcp2K::new_client(config, "127.0.0.1:7777".to_string()).unwrap();
+    // 创建 KCP 客户端
+    let client = Kcp2K::new_client(config, "127.0.0.1:3100".to_string(), call_back).unwrap();
 
-loop {
-    // Client tick
-    client.tick();
-    
-    // Handle callbacks
-    if let Ok(cb) = c_rx.try_recv() {
-        match cb.callback_type {
-            CallbackType::OnConnected => {
-                println!("Connected to server");
-            }
-            CallbackType::OnData => {
-                println!("Received data on channel: {:?}", cb.channel);
-            }
-            // ... handle other callbacks
-        }
+    loop {
+        // 客户端处理
+        client.tick();
     }
 }
 ```

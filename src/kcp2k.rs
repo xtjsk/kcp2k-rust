@@ -8,17 +8,17 @@ use crate::kcp2k_header::Kcp2KHeaderReliable;
 use crate::kcp2k_peer::Kcp2KPeer;
 use bytes::Bytes;
 use common::Kcp2KMode;
-use crossbeam_channel;
-use dashmap::mapref::one::RefMut;
 use dashmap::try_result::TryResult;
 use dashmap::DashMap;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use std::collections::VecDeque;
 use std::io::Error;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use tklog::{debug, info, warn};
+use std::sync::{Arc, Mutex};
+use dashmap::mapref::one::Ref;
+use tklog::{debug, error, info, warn};
 
 pub struct Kcp2K {
     mode: Kcp2KMode,
@@ -26,9 +26,8 @@ pub struct Kcp2K {
     socket: Arc<Socket>,      // socket
     connections: DashMap<u64, Kcp2KConnection>,
     callback: fn(Callback),
-    remove_connection_tx: Arc<crossbeam_channel::Sender<u64>>,
-    remove_connection_rx: Arc<crossbeam_channel::Receiver<u64>>,
-    client_model_default_connection_id: AtomicU64,
+    rm_conn_ids: Arc<Mutex<VecDeque<u64>>>,
+    _default_conn_id: AtomicU64,
 }
 
 impl Kcp2K {
@@ -55,15 +54,7 @@ impl Kcp2K {
         )?;
         socket.set_nonblocking(true)?;
         socket.bind(&socket_addr.into())?;
-        let (remove_connection_tx, remove_connection_rx) = crossbeam_channel::unbounded::<u64>();
-        let server = Self::new(
-            config,
-            Kcp2KMode::Server,
-            socket,
-            callback,
-            remove_connection_tx,
-            remove_connection_rx,
-        );
+        let server = Self::new(config, Kcp2KMode::Server, socket, callback);
         info!(format!(
             "[KCP2K] Server bind on: {:?}",
             server.socket.local_addr()?.as_socket().unwrap()
@@ -93,18 +84,10 @@ impl Kcp2K {
         )?;
         socket.set_nonblocking(true)?;
         socket.connect(&address.into())?;
-        let (remove_connection_tx, remove_connection_rx) = crossbeam_channel::unbounded::<u64>();
-        let client = Self::new(
-            config,
-            Kcp2KMode::Client,
-            socket,
-            callback,
-            remove_connection_tx,
-            remove_connection_rx,
-        );
+        let client = Self::new(config, Kcp2KMode::Client, socket, callback);
         client.create_connection(
             client
-                .client_model_default_connection_id
+                ._default_conn_id
                 .load(Ordering::SeqCst),
             address.into(),
         );
@@ -114,23 +97,15 @@ impl Kcp2K {
         ));
         Ok(client)
     }
-    fn new(
-        config: Kcp2KConfig,
-        mode: Kcp2KMode,
-        socket: Socket,
-        callback: fn(Callback),
-        remove_connection_tx: crossbeam_channel::Sender<u64>,
-        remove_connection_rx: crossbeam_channel::Receiver<u64>,
-    ) -> Self {
+    fn new(config: Kcp2KConfig, mode: Kcp2KMode, socket: Socket, callback: fn(Callback)) -> Self {
         Self {
             mode,
             config: Arc::new(config),
             socket: Arc::new(socket),
             connections: DashMap::new(),
             callback,
-            remove_connection_tx: Arc::new(remove_connection_tx),
-            remove_connection_rx: Arc::new(remove_connection_rx),
-            client_model_default_connection_id: AtomicU64::new(rand::random()),
+            rm_conn_ids: Arc::new(Mutex::new(VecDeque::new())),
+            _default_conn_id: AtomicU64::new(rand::random()),
         }
     }
     pub fn stop(&self) -> Result<(), Error> {
@@ -161,7 +136,7 @@ impl Kcp2K {
     pub fn c_send(&self, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         if let Some(mut connection) = self.connections.get_mut(
             &self
-                .client_model_default_connection_id
+                ._default_conn_id
                 .load(Ordering::SeqCst),
         ) {
             connection.send_data(data, channel)
@@ -202,14 +177,14 @@ impl Kcp2K {
             ));
             match self.connections.remove(
                 &self
-                    .client_model_default_connection_id
+                    ._default_conn_id
                     .load(Ordering::SeqCst),
             ) {
                 Some((_, mut conn)) => {
-                    self.client_model_default_connection_id
+                    self._default_conn_id
                         .store(connection_id, Ordering::SeqCst);
                     conn.set_connection_id(
-                        self.client_model_default_connection_id
+                        self._default_conn_id
                             .load(Ordering::SeqCst),
                     );
                     conn.set_kcp_peer(Kcp2KPeer::new(
@@ -220,7 +195,7 @@ impl Kcp2K {
                         Arc::new(sock_addr.clone()),
                     ));
                     self.connections.insert(
-                        self.client_model_default_connection_id
+                        self._default_conn_id
                             .load(Ordering::SeqCst),
                         conn,
                     );
@@ -244,7 +219,7 @@ impl Kcp2K {
             Arc::new(sock_addr),
             Arc::new(self.mode),
             self.callback,
-            Arc::clone(&self.remove_connection_tx),
+            Arc::clone(&self.rm_conn_ids),
         );
 
         self.connections
@@ -255,8 +230,15 @@ impl Kcp2K {
         self.tick_outgoing();
     }
     pub fn tick_incoming(&self) {
-        while let Ok(connection_id) = self.remove_connection_rx.try_recv() {
-            self.connections.remove(&connection_id);
+        match self.rm_conn_ids.try_lock() {
+            Ok(mut rm_conn_ids) => {
+                while let Some(connection_id) = rm_conn_ids.pop_front() {
+                    self.connections.remove(&connection_id);
+                }
+            }
+            Err(err) => {
+                error!(format!("[KCP2K] Failed to lock rm_conn_ids: {:?}", err));
+            }
         }
 
         while let Some((sock_addr, data)) = self.raw_receive_from() {
@@ -272,19 +254,20 @@ impl Kcp2K {
             connection.tick_outgoing();
         }
     }
-    pub fn get_connection(&self, connection_id: u64) -> Option<RefMut<u64, Kcp2KConnection>> {
-        if let Some(connection) = self.connections.get_mut(&connection_id) {
-            Some(connection)
-        } else {
-            None
-        }
-    }
     pub fn get_connection_address(&self, connection_id: u64) -> String {
-        if let Some(connection) = self.connections.get(&connection_id) {
-            if let Some(sock_addr) = connection.get_sock_addr().as_socket() {
-                return sock_addr.to_string();
+        match self.connections.try_get(&connection_id) {
+            TryResult::Present(conn) => {
+                if let Some(sock_addr) = conn.get_sock_addr().as_socket() {
+                    return sock_addr.to_string();
+                }
             }
-        };
+            TryResult::Absent => {
+                debug!(format!("[KCP2K] Connection {} not found", connection_id));
+            }
+            TryResult::Locked => {
+                error!(format!("[KCP2K] Connection {} is locked", connection_id));
+            }
+        }
         "".to_string()
     }
     pub fn get_connections(&self) -> &DashMap<u64, Kcp2KConnection> {
@@ -296,10 +279,10 @@ impl Kcp2K {
                 conn.send_disconnect();
             }
             TryResult::Absent => {
-                warn!(format!("[KCP2K] Connection {} not found", connection_id));
+                debug!(format!("[KCP2K] Connection {} not found", connection_id));
             }
             TryResult::Locked => {
-                warn!(format!("[KCP2K] Connection {} is locked", connection_id));
+                error!(format!("[KCP2K] Connection {} is locked", connection_id));
             }
         }
     }

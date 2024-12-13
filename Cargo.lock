@@ -263,7 +263,6 @@ name = "kcp2k_rust"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "crossbeam-channel",
  "dashmap",
  "kcp",
  "rand",

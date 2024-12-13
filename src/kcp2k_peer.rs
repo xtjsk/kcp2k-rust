@@ -30,7 +30,7 @@ impl Kcp2KPeer {
         socket: Arc<Socket>,
         client_sock_addr: Arc<SockAddr>,
     ) -> Self {
-        // set up kcp over reliable channel (that's what kcp is for)
+        // set up kcp over a reliable channel (that's what kcp is for)
         let udp_output = UdpOutput::new(
             kcp2k_mode,
             Arc::clone(&cookie),
@@ -52,7 +52,7 @@ impl Kcp2KPeer {
         // IMPORTANT: high level needs to add 1 channel byte to each raw
         // message. so while Kcp.MTU_DEF is perfect, we actually need to
         // tell kcp to use MTU-1 so we can still put the header into the
-        // message afterwards.
+        // message afterward.
         kcp.set_mtu(config.mtu - Kcp2KConfig::METADATA_SIZE_RELIABLE)
             .expect("set_mtu failed");
 
@@ -121,29 +121,19 @@ impl Write for UdpOutput {
         buffer.put_slice(buf);
 
         // 发送数据
-        match *self.kcp2k_mode {
-            Kcp2KMode::Client => match self.socket.send(&buffer) {
-                Ok(_) => Ok(buf.len()),
-                Err(e) => {
-                    error!(format!(
-                        "socket send_to {:?} failed: {:?}",
-                        self.client_sock_addr.as_socket().unwrap(),
-                        e
-                    ));
-                    Ok(0)
-                }
-            },
-            Kcp2KMode::Server => match self.socket.send_to(&buffer, &self.client_sock_addr) {
-                Ok(_) => Ok(buf.len()),
-                Err(e) => {
-                    error!(format!(
-                        "socket send_to {:?} failed: {:?}",
-                        self.client_sock_addr.as_socket().unwrap(),
-                        e
-                    ));
-                    Ok(0)
-                }
-            },
+        match match *self.kcp2k_mode {
+            // 客户端
+            Kcp2KMode::Client => self.socket.send(&buffer),
+            // 服务器
+            Kcp2KMode::Server => self.socket.send_to(&buffer, &self.client_sock_addr),
+        } {
+            // 发送成功
+            Ok(_) => Ok(buf.len()),
+            // 发送失败
+            Err(err) => {
+                error!(format!("UdpOutput write error: {:?}", err));
+                Err(err)
+            }
         }
     }
 

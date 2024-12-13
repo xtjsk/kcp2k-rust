@@ -13,8 +13,8 @@ pub enum CallbackType {
 
 // Callback: 服务器回调
 pub struct Callback {
-    pub callback_type: CallbackType,
-    pub connection_id: u64,
+    pub r#type: CallbackType,
+    pub conn_id: u64,
     pub data: Bytes,
     pub channel: Kcp2KChannel,
     pub error_code: ErrorCode,
@@ -22,25 +22,25 @@ pub struct Callback {
 }
 impl Debug for Callback {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self.callback_type {
+        match self.r#type {
             CallbackType::OnConnected => {
-                write!(f, "OnConnected: id {} ", self.connection_id)
+                write!(f, "OnConnected: id {} ", self.conn_id)
             }
             CallbackType::OnData => {
                 write!(
                     f,
                     "OnData: id {} {:?} {:?}",
-                    self.connection_id, self.channel, self.data
+                    self.conn_id, self.channel, self.data
                 )
             }
             CallbackType::OnDisconnected => {
-                write!(f, "OnDisconnected: id {}", self.connection_id)
+                write!(f, "OnDisconnected: id {}", self.conn_id)
             }
             CallbackType::OnError => {
                 write!(
                     f,
                     "OnError: id {} - {:?} {}",
-                    self.connection_id, self.error_code, self.error_message
+                    self.conn_id, self.error_code, self.error_message
                 )
             }
         }
@@ -50,9 +50,9 @@ impl Debug for Callback {
 impl Default for Callback {
     fn default() -> Self {
         Self {
-            callback_type: CallbackType::OnError,
+            r#type: CallbackType::OnError,
             data: Bytes::new(),
-            connection_id: 0,
+            conn_id: 0,
             channel: Kcp2KChannel::None,
             error_code: ErrorCode::None,
             error_message: "None".to_string(),

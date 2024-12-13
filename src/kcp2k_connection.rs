@@ -8,7 +8,8 @@ use crate::kcp2k_peer::Kcp2KPeer;
 use crate::kcp2k_state::Kcp2KPeerState;
 use bytes::{BufMut, Bytes, BytesMut};
 use socket2::{SockAddr, Socket};
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tklog::error;
 
@@ -16,10 +17,10 @@ use tklog::error;
 #[derive(Debug)]
 pub struct Kcp2KConnection {
     socket: Arc<Socket>,
-    connection_id: u64,
+    id: u64,
     client_sock_addr: Arc<SockAddr>,
     callback: fn(Callback),
-    remove_connection_tx: Arc<crossbeam_channel::Sender<u64>>,
+    rm_conn_ids: Arc<Mutex<VecDeque<u64>>>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
 }
@@ -33,14 +34,14 @@ impl Kcp2KConnection {
         client_sock_addr: Arc<SockAddr>,
         kcp2k_mode: Arc<Kcp2KMode>,
         callback: fn(Callback),
-        remove_connection_tx: Arc<crossbeam_channel::Sender<u64>>,
+        rm_conn_ids: Arc<Mutex<VecDeque<u64>>>,
     ) -> Self {
         let kcp_server_connection = Kcp2KConnection {
             socket: Arc::clone(&socket),
-            connection_id,
+            id: connection_id,
             client_sock_addr: Arc::clone(&client_sock_addr),
             callback,
-            remove_connection_tx,
+            rm_conn_ids,
             kcp_peer: Kcp2KPeer::new(
                 Arc::clone(&kcp2k_mode),
                 Arc::clone(&config),
@@ -59,15 +60,15 @@ impl Kcp2KConnection {
         self.kcp_peer = kcp_peer;
     }
     pub fn get_connection_id(&self) -> u64 {
-        self.connection_id
+        self.id
     }
     pub fn set_connection_id(&mut self, connection_id: u64) {
-        self.connection_id = connection_id;
+        self.id = connection_id;
     }
     fn on_connected(&self) {
         (self.callback)(Callback {
-            callback_type: CallbackType::OnConnected,
-            connection_id: self.connection_id,
+            r#type: CallbackType::OnConnected,
+            conn_id: self.id,
             ..Default::default()
         });
     }
@@ -89,10 +90,10 @@ impl Kcp2KConnection {
     }
     fn on_data(&self, data: Bytes, kcp2k_channel: Kcp2KChannel) {
         (self.callback)(Callback {
-            callback_type: CallbackType::OnData,
+            r#type: CallbackType::OnData,
             data,
             channel: kcp2k_channel,
-            connection_id: self.connection_id,
+            conn_id: self.id,
             ..Default::default()
         });
     }
@@ -129,15 +130,15 @@ impl Kcp2KConnection {
         }
         // 回调
         (self.callback)(Callback {
-            callback_type: CallbackType::OnDisconnected,
-            connection_id: self.connection_id,
+            r#type: CallbackType::OnDisconnected,
+            conn_id: self.id,
             ..Default::default()
         });
     }
     fn on_error(&self, error_code: ErrorCode, error_message: String) {
         (self.callback)(Callback {
-            callback_type: CallbackType::OnError,
-            connection_id: self.connection_id,
+            r#type: CallbackType::OnError,
+            conn_id: self.id,
             error_code,
             error_message,
             ..Default::default()
@@ -410,7 +411,7 @@ impl Kcp2KConnection {
         if !data.is_empty() {
             buffer.put_slice(&data);
         }
-        // raw send
+        //  send it raw
         self.raw_send(&buffer)
     }
     pub fn tick_incoming(&self) {
@@ -534,8 +535,19 @@ impl Kcp2KConnection {
     }
     // 发送断开连接
     pub fn send_disconnect(&self) {
-        // 从连接列表中删除连接
-        let _ = self.remove_connection_tx.send(self.connection_id);
+        // 将连接 ID 添加到删除列表
+        match self.rm_conn_ids.try_lock() {
+            Ok(mut rm_conn_ids) => {
+                rm_conn_ids.push_back(self.id);
+            }
+            Err(err) => {
+                error!(format!(
+                    "{}: Failed to push connection ID to remove list: {}",
+                    std::any::type_name::<Self>(),
+                    err
+                ));
+            }
+        }
         for _ in 0..5 {
             let _ = self.send_unreliable(Kcp2KHeaderUnreliable::Disconnect, Default::default());
         }

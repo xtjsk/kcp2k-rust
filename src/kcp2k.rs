@@ -17,8 +17,7 @@ use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use dashmap::mapref::one::Ref;
-use tklog::{debug, error, info, warn};
+use tklog::{debug, error, info};
 
 pub struct Kcp2K {
     mode: Kcp2KMode,
@@ -86,9 +85,7 @@ impl Kcp2K {
         socket.connect(&address.into())?;
         let client = Self::new(config, Kcp2KMode::Client, socket, callback);
         client.create_connection(
-            client
-                ._default_conn_id
-                .load(Ordering::SeqCst),
+            client._default_conn_id.load(Ordering::SeqCst),
             address.into(),
         );
         info!(format!(
@@ -109,17 +106,8 @@ impl Kcp2K {
         }
     }
     pub fn stop(&self) -> Result<(), Error> {
-        match self.socket.shutdown(std::net::Shutdown::Both) {
-            Ok(_) => {
-                self.connections.clear();
-                warn!("[KCP2K] Stopped".to_string());
-                Ok(())
-            }
-            Err(_) => {
-                warn!("[KCP2K] Failed to stop KCP2K".to_string());
-                Err(Error::from_raw_os_error(1))
-            }
-        }
+        self.connections.clear();
+        self.socket.shutdown(std::net::Shutdown::Both)
     }
     pub fn s_send(
         &self,
@@ -127,21 +115,20 @@ impl Kcp2K {
         data: Bytes,
         channel: Kcp2KChannel,
     ) -> Result<(), ErrorCode> {
-        if let Some(mut connection) = self.connections.get_mut(&connection_id) {
-            connection.send_data(data, channel)
-        } else {
-            Err(ErrorCode::ConnectionNotFound)
+        match self.connections.try_get_mut(&connection_id) {
+            TryResult::Present(mut conn) => conn.send_data(data, channel),
+            TryResult::Absent => Err(ErrorCode::ConnectionNotFound),
+            TryResult::Locked => Err(ErrorCode::ConnectionLocked),
         }
     }
     pub fn c_send(&self, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
-        if let Some(mut connection) = self.connections.get_mut(
-            &self
-                ._default_conn_id
-                .load(Ordering::SeqCst),
-        ) {
-            connection.send_data(data, channel)
-        } else {
-            Err(ErrorCode::ConnectionNotFound)
+        match self
+            .connections
+            .try_get_mut(&self._default_conn_id.load(Ordering::SeqCst))
+        {
+            TryResult::Present(mut conn) => conn.send_data(data, channel),
+            TryResult::Absent => Err(ErrorCode::ConnectionNotFound),
+            TryResult::Locked => Err(ErrorCode::ConnectionLocked),
         }
     }
     fn raw_receive_from(&self) -> Option<(SockAddr, Bytes)> {
@@ -175,18 +162,13 @@ impl Kcp2K {
                 "[KCP2K] Client received handshake with cookie={:?}",
                 cookie.to_vec()
             ));
-            match self.connections.remove(
-                &self
-                    ._default_conn_id
-                    .load(Ordering::SeqCst),
-            ) {
+            match self
+                .connections
+                .remove(&self._default_conn_id.load(Ordering::SeqCst))
+            {
                 Some((_, mut conn)) => {
-                    self._default_conn_id
-                        .store(connection_id, Ordering::SeqCst);
-                    conn.set_connection_id(
-                        self._default_conn_id
-                            .load(Ordering::SeqCst),
-                    );
+                    self._default_conn_id.store(connection_id, Ordering::SeqCst);
+                    conn.set_connection_id(self._default_conn_id.load(Ordering::SeqCst));
                     conn.set_kcp_peer(Kcp2KPeer::new(
                         Arc::new(self.mode),
                         Arc::clone(&self.config),
@@ -194,11 +176,8 @@ impl Kcp2K {
                         Arc::clone(&self.socket),
                         Arc::new(sock_addr.clone()),
                     ));
-                    self.connections.insert(
-                        self._default_conn_id
-                            .load(Ordering::SeqCst),
-                        conn,
-                    );
+                    self.connections
+                        .insert(self._default_conn_id.load(Ordering::SeqCst), conn);
                 }
                 None => {}
             }

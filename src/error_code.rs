@@ -11,4 +11,5 @@ pub enum ErrorCode {
     Unexpected,         // 意外错误/异常，需要修复。
     SendError,          // 发送数据失败
     ConnectionNotFound, // 未找到连接
+    ConnectionLocked,   // 连接被锁定
 }

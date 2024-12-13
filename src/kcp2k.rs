@@ -185,11 +185,6 @@ impl Kcp2K {
     }
     fn create_connection(&self, connection_id: u64, sock_addr: SockAddr) {
         let cookie = common::generate_cookie();
-        debug!(format!(
-            "[KCP2K] Created connection {} with cookie {:?}",
-            connection_id,
-            cookie.to_vec()
-        ));
         let kcp_server_connection = Kcp2KConnection::new(
             Arc::clone(&self.config),
             Arc::new(cookie),

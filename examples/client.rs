@@ -1,8 +1,9 @@
 use kcp2k_rust::kcp2k::Kcp2K;
 use kcp2k_rust::kcp2k_callback::Callback;
 use kcp2k_rust::kcp2k_config::Kcp2KConfig;
+use kcp2k_rust::kcp2k_connection::Kcp2KConnection;
 
-fn call_back(cb: Callback) {
+fn call_back(_: &Kcp2KConnection, cb: Callback) {
     println!("{:?}", cb);
 }
 fn main() {

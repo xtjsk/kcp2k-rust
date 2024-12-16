@@ -22,57 +22,6 @@ KCP2K（KCP with K2 network layer）协议的 Rust 实现，为游戏和实时�
 kcp2k_rust = { git = "https://github.com/xtjsk/kcp2k-rust.git" }
 ```
 
-
-## 使用方法
-
-### 服务器示例
-
-```rust
-use kcp2k_rust::kcp2k::Kcp2K;
-use kcp2k_rust::kcp2k_callback::Callback;
-use kcp2k_rust::kcp2k_config::Kcp2KConfig;
-fn call_back(cb: Callback) {
-    println!("{:?}", cb);
-}
-fn main() {
-    // 创建 KCP 服务器配置
-    let config = Kcp2KConfig::default();
-
-    // 创建 KCP 服务器
-    let server = Kcp2K::new_server(config, "0.0.0.0:3100".to_string(), call_back).unwrap();
-
-    loop {
-        // 服务器处理
-        server.tick();
-    }
-}
-
-```
-
-### 客户端示例
-
-```rust
-use kcp2k_rust::kcp2k::Kcp2K;
-use kcp2k_rust::kcp2k_callback::Callback;
-use kcp2k_rust::kcp2k_config::Kcp2KConfig;
-
-fn call_back(cb: Callback) {
-    println!("{:?}", cb);
-}
-fn main() {
-    // 创建 KCP 客户端配置
-    let config = Kcp2KConfig::default();
-
-    // 创建 KCP 客户端
-    let client = Kcp2K::new_client(config, "127.0.0.1:3100".to_string(), call_back).unwrap();
-
-    loop {
-        // 客户端处理
-        client.tick();
-    }
-}
-```
-
 ## 配置
 
 `Kcp2KConfig` 结构体允许你配置各种 KCP 参数：

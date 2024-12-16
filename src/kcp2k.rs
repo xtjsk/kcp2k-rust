@@ -24,7 +24,7 @@ pub struct Kcp2K {
     config: Arc<Kcp2KConfig>, // 配置
     socket: Arc<Socket>,      // socket
     connections: DashMap<u64, Kcp2KConnection>,
-    callback: fn(Callback),
+    callback: fn(&Kcp2KConnection, Callback),
     rm_conn_ids: Arc<Mutex<VecDeque<u64>>>,
     _default_conn_id: AtomicU64,
 }
@@ -33,7 +33,7 @@ impl Kcp2K {
     pub fn new_server(
         config: Kcp2KConfig,
         addr: String,
-        callback: fn(Callback),
+        callback: fn(&Kcp2KConnection,Callback),
     ) -> Result<Self, Error> {
         let socket_addr: SocketAddr = addr.parse().unwrap();
         let socket = Socket::new(
@@ -63,7 +63,7 @@ impl Kcp2K {
     pub fn new_client(
         config: Kcp2KConfig,
         addr: String,
-        callback: fn(Callback),
+        callback: fn(&Kcp2KConnection,Callback),
     ) -> Result<Self, Error> {
         let address: SocketAddr = addr.parse().unwrap();
         let socket = Socket::new(
@@ -94,7 +94,7 @@ impl Kcp2K {
         ));
         Ok(client)
     }
-    fn new(config: Kcp2KConfig, mode: Kcp2KMode, socket: Socket, callback: fn(Callback)) -> Self {
+    fn new(config: Kcp2KConfig, mode: Kcp2KMode, socket: Socket, callback: fn(&Kcp2KConnection,Callback)) -> Self {
         Self {
             mode,
             config: Arc::new(config),
@@ -116,7 +116,7 @@ impl Kcp2K {
         channel: Kcp2KChannel,
     ) -> Result<(), ErrorCode> {
         match self.connections.try_get_mut(&connection_id) {
-            TryResult::Present(mut conn) => conn.send_data(data, channel),
+            TryResult::Present(conn) => conn.send_data(data, channel),
             TryResult::Absent => Err(ErrorCode::ConnectionNotFound),
             TryResult::Locked => Err(ErrorCode::ConnectionLocked),
         }
@@ -126,7 +126,7 @@ impl Kcp2K {
             .connections
             .try_get_mut(&self._default_conn_id.load(Ordering::SeqCst))
         {
-            TryResult::Present(mut conn) => conn.send_data(data, channel),
+            TryResult::Present(conn) => conn.send_data(data, channel),
             TryResult::Absent => Err(ErrorCode::ConnectionNotFound),
             TryResult::Locked => Err(ErrorCode::ConnectionLocked),
         }

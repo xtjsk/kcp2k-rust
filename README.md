@@ -22,56 +22,6 @@ Add this to your `Cargo.toml`:
 kcp2k_rust = { git = "https://github.com/xtjsk/kcp2k-rust.git" }
 ```
 
-## Usage
-
-### Server Example
-
-```rust
-use kcp2k_rust::kcp2k::Kcp2K;
-use kcp2k_rust::kcp2k_callback::Callback;
-use kcp2k_rust::kcp2k_config::Kcp2KConfig;
-fn call_back(cb: Callback) {
-    println!("{:?}", cb);
-}
-fn main() {
-    // 创建 KCP 服务器配置
-    let config = Kcp2KConfig::default();
-
-    // 创建 KCP 服务器
-    let server = Kcp2K::new_server(config, "0.0.0.0:3100".to_string(), call_back).unwrap();
-
-    loop {
-        // 服务器处理
-        server.tick();
-    }
-}
-
-```
-
-### Client Example
-
-```rust
-use kcp2k_rust::kcp2k::Kcp2K;
-use kcp2k_rust::kcp2k_callback::Callback;
-use kcp2k_rust::kcp2k_config::Kcp2KConfig;
-
-fn call_back(cb: Callback) {
-    println!("{:?}", cb);
-}
-fn main() {
-    // 创建 KCP 客户端配置
-    let config = Kcp2KConfig::default();
-
-    // 创建 KCP 客户端
-    let client = Kcp2K::new_client(config, "127.0.0.1:3100".to_string(), call_back).unwrap();
-
-    loop {
-        // 客户端处理
-        client.tick();
-    }
-}
-```
-
 ## Configuration
 
 The `Kcp2KConfig` struct allows you to configure various KCP parameters:

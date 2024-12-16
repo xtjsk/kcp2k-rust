@@ -19,7 +19,7 @@ pub struct Kcp2KConnection {
     socket: Arc<Socket>,
     id: u64,
     client_sock_addr: Arc<SockAddr>,
-    callback: fn(Callback),
+    callback: fn(&Kcp2KConnection, Callback),
     rm_conn_ids: Arc<Mutex<VecDeque<u64>>>,
     kcp_peer: Kcp2KPeer,
     is_reliable_ping: bool,
@@ -33,7 +33,7 @@ impl Kcp2KConnection {
         connection_id: u64,
         client_sock_addr: Arc<SockAddr>,
         kcp2k_mode: Arc<Kcp2KMode>,
-        callback: fn(Callback),
+        callback: fn(&Kcp2KConnection, Callback),
         rm_conn_ids: Arc<Mutex<VecDeque<u64>>>,
     ) -> Self {
         let kcp_server_connection = Kcp2KConnection {
@@ -66,11 +66,14 @@ impl Kcp2KConnection {
         self.id = connection_id;
     }
     fn on_connected(&self) {
-        (self.callback)(Callback {
-            r#type: CallbackType::OnConnected,
-            conn_id: self.id,
-            ..Default::default()
-        });
+        (self.callback)(
+            self,
+            Callback {
+                r#type: CallbackType::OnConnected,
+                conn_id: self.id,
+                ..Default::default()
+            },
+        );
     }
     fn on_authenticated(&self) {
         self.send_hello();
@@ -89,7 +92,7 @@ impl Kcp2KConnection {
         };
     }
     fn on_data(&self, data: Bytes, kcp2k_channel: Kcp2KChannel) {
-        (self.callback)(Callback {
+        (self.callback)(self,Callback {
             r#type: CallbackType::OnData,
             data,
             channel: kcp2k_channel,
@@ -129,14 +132,14 @@ impl Kcp2KConnection {
             }
         }
         // 回调
-        (self.callback)(Callback {
+        (self.callback)(self,Callback {
             r#type: CallbackType::OnDisconnected,
             conn_id: self.id,
             ..Default::default()
         });
     }
     fn on_error(&self, error_code: ErrorCode, error_message: String) {
-        (self.callback)(Callback {
+        (self.callback)(self,Callback {
             r#type: CallbackType::OnError,
             conn_id: self.id,
             error_code,
@@ -513,7 +516,7 @@ impl Kcp2KConnection {
         }
     }
     // 发送数据
-    pub fn send_data(&mut self, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
+    pub fn send_data(&self, data: Bytes, channel: Kcp2KChannel) -> Result<(), ErrorCode> {
         // 如果数据为空，则返回错误
         if data.is_empty() {
             self.on_error(

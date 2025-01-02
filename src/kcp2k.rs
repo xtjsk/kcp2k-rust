@@ -106,9 +106,7 @@ impl Kcp2K {
         }
     }
     pub fn stop(&self) -> Result<(), Error> {
-        let result = self.socket.shutdown(std::net::Shutdown::Both);
-        self.connections.clear();
-        result
+        self.socket.shutdown(std::net::Shutdown::Both)
     }
     pub fn s_send(
         &self,
